@@ -1,4 +1,5 @@
 mod acp;
+mod app_error;
 mod commands;
 mod db;
 mod models;

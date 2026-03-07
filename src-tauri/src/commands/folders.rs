@@ -13,6 +13,7 @@ use tauri::Emitter;
 use tokio::sync::Semaphore;
 use walkdir::WalkDir;
 
+use crate::app_error::{AppCommandError, AppErrorCode};
 use crate::db::error::DbError;
 use crate::db::service::folder_service;
 use crate::db::AppDatabase;
@@ -278,8 +279,10 @@ pub async fn get_folder(
 #[tauri::command]
 pub async fn load_folder_history(
     db: tauri::State<'_, AppDatabase>,
-) -> Result<Vec<FolderHistoryEntry>, DbError> {
-    folder_service::list_folders(&db.conn).await
+) -> Result<Vec<FolderHistoryEntry>, AppCommandError> {
+    folder_service::list_folders(&db.conn)
+        .await
+        .map_err(AppCommandError::from)
 }
 
 #[tauri::command]
@@ -318,8 +321,10 @@ pub async fn set_folder_parent_branch(
 pub async fn remove_folder_from_history(
     db: tauri::State<'_, AppDatabase>,
     path: String,
-) -> Result<(), DbError> {
-    folder_service::remove_folder(&db.conn, &path).await
+) -> Result<(), AppCommandError> {
+    folder_service::remove_folder(&db.conn, &path)
+        .await
+        .map_err(AppCommandError::from)
 }
 
 #[tauri::command]
@@ -337,24 +342,88 @@ pub async fn create_folder_directory(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn clone_repository(url: String, target_dir: String) -> Result<(), String> {
+pub async fn clone_repository(url: String, target_dir: String) -> Result<(), AppCommandError> {
+    if url.trim().is_empty() || target_dir.trim().is_empty() {
+        return Err(AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Repository URL and target directory are required",
+        ));
+    }
+
     let output = crate::process::tokio_command("git")
         .args(["clone", &url, &target_dir])
         .output()
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                "Git is not installed. Please install Git first: https://git-scm.com".to_string()
+                AppCommandError::new(
+                    AppErrorCode::DependencyMissing,
+                    "Git is not installed. Please install Git first.",
+                )
+                .with_detail("https://git-scm.com")
             } else {
-                format!("Failed to run git: {}", e)
+                AppCommandError::external_command("Failed to run git clone", e.to_string())
             }
         })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Clone failed: {}", stderr.trim()));
+        return Err(classify_git_clone_error(stderr.trim()));
     }
     Ok(())
+}
+
+fn classify_git_clone_error(stderr: &str) -> AppCommandError {
+    let normalized = stderr.to_lowercase();
+
+    if normalized.contains("already exists and is not an empty directory") {
+        return AppCommandError::new(
+            AppErrorCode::AlreadyExists,
+            "Target directory already exists and is not empty",
+        )
+        .with_detail(stderr.to_string());
+    }
+
+    if normalized.contains("repository not found") {
+        return AppCommandError::new(
+            AppErrorCode::NotFound,
+            "Repository not found. Check URL and access permissions.",
+        )
+        .with_detail(stderr.to_string());
+    }
+
+    if normalized.contains("could not resolve host")
+        || normalized.contains("network is unreachable")
+        || normalized.contains("connection timed out")
+        || normalized.contains("failed to connect")
+    {
+        return AppCommandError::new(
+            AppErrorCode::NetworkError,
+            "Network is unavailable while cloning repository",
+        )
+        .with_detail(stderr.to_string());
+    }
+
+    if normalized.contains("authentication failed")
+        || normalized.contains("could not read username")
+        || normalized.contains("permission denied (publickey)")
+    {
+        return AppCommandError::new(
+            AppErrorCode::AuthenticationFailed,
+            "Authentication failed while cloning repository",
+        )
+        .with_detail(stderr.to_string());
+    }
+
+    if normalized.contains("permission denied") {
+        return AppCommandError::new(
+            AppErrorCode::PermissionDenied,
+            "Permission denied while cloning repository",
+        )
+        .with_detail(stderr.to_string());
+    }
+
+    AppCommandError::external_command("Git clone failed", stderr.to_string())
 }
 
 #[tauri::command]
@@ -1094,9 +1163,7 @@ pub async fn git_delete_branch(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-const WATCH_IGNORED_DIRS: &[&str] = &[
-    "__pycache__",
-];
+const WATCH_IGNORED_DIRS: &[&str] = &["__pycache__"];
 const FILE_TREE_IGNORED_DIRS: &[&str] = &[".git", "__pycache__"];
 
 const FILE_PREVIEW_DEFAULT_MAX_BYTES: usize = 200_000;
@@ -1239,19 +1306,16 @@ fn is_allowed_git_watch_path(relative: &Path) -> bool {
 
     let second_name = second.to_string_lossy();
     match second_name.as_ref() {
-        "HEAD"
-        | "index"
-        | "packed-refs"
-        | "FETCH_HEAD"
-        | "ORIG_HEAD"
-        | "MERGE_HEAD"
-        | "CHERRY_PICK_HEAD"
-        | "REVERT_HEAD" => true,
+        "HEAD" | "index" | "packed-refs" | "FETCH_HEAD" | "ORIG_HEAD" | "MERGE_HEAD"
+        | "CHERRY_PICK_HEAD" | "REVERT_HEAD" => true,
         "refs" => {
             let Some(Component::Normal(scope)) = components.next() else {
                 return true;
             };
-            matches!(scope.to_string_lossy().as_ref(), "heads" | "remotes" | "stash")
+            matches!(
+                scope.to_string_lossy().as_ref(),
+                "heads" | "remotes" | "stash"
+            )
         }
         "rebase-merge" | "rebase-apply" => true,
         _ => false,

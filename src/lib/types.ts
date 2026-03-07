@@ -20,6 +20,27 @@ export type AgentType =
   | "open_claw"
   | "stakpak"
 
+export type AppErrorCode =
+  | "unknown"
+  | "invalid_input"
+  | "not_found"
+  | "already_exists"
+  | "permission_denied"
+  | "dependency_missing"
+  | "network_error"
+  | "authentication_failed"
+  | "database_error"
+  | "io_error"
+  | "external_command_failed"
+  | "window_operation_failed"
+  | (string & {})
+
+export interface AppCommandError {
+  code: AppErrorCode
+  message: string
+  detail?: string | null
+}
+
 export interface ConversationSummary {
   id: string
   agent_type: AgentType

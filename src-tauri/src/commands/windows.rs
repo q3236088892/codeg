@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::app_error::AppCommandError;
 use crate::db::AppDatabase;
 use crate::models::FolderHistoryEntry;
 
@@ -196,11 +197,11 @@ pub async fn open_folder_window(
     app: AppHandle,
     db: tauri::State<'_, AppDatabase>,
     path: String,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     // Add to history via DB
     let entry = crate::db::service::folder_service::add_folder(&db.conn, &path)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
     // Create folder window with unique label
     let label = format!("folder-{}", uuid::Uuid::new_v4());
@@ -211,12 +212,14 @@ pub async fn open_folder_window(
         .min_inner_size(900.0, 600.0);
     let folder_window = apply_platform_window_style(builder)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppCommandError::window("Failed to open folder window", e.to_string()))?;
     ensure_windows_undecorated(&folder_window);
 
     // Close welcome window
     if let Some(w) = app.get_webview_window("welcome") {
-        w.close().map_err(|e| e.to_string())?;
+        w.close().map_err(|e| {
+            AppCommandError::window("Failed to close welcome window", e.to_string())
+        })?;
     }
     Ok(())
 }
@@ -277,18 +280,24 @@ pub async fn open_settings_window(
     section: Option<String>,
     agent_type: Option<String>,
     state: tauri::State<'_, SettingsWindowState>,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     let target_route = resolve_settings_target(section.as_deref(), agent_type.as_deref());
     if let Some(existing) = app.get_webview_window("settings") {
         ensure_windows_undecorated(&existing);
         if section.is_some() || agent_type.is_some() {
             let target_path = format!("/{target_route}");
-            let target_json = serde_json::to_string(&target_path).map_err(|e| e.to_string())?;
+            let target_json = serde_json::to_string(&target_path).map_err(|e| {
+                AppCommandError::window("Failed to build settings navigation target", e.to_string())
+            })?;
             let nav_script = format!("window.location.replace({target_json});");
-            existing.eval(&nav_script).map_err(|e| e.to_string())?;
+            existing.eval(&nav_script).map_err(|e| {
+                AppCommandError::window("Failed to navigate settings window", e.to_string())
+            })?;
         }
         let _ = existing.unminimize();
-        existing.set_focus().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| {
+            AppCommandError::window("Failed to focus settings window", e.to_string())
+        })?;
         return Ok(());
     }
 
@@ -302,20 +311,24 @@ pub async fn open_settings_window(
         .center();
     let settings_window = apply_platform_window_style(builder)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppCommandError::window("Failed to open settings window", e.to_string()))?;
     ensure_windows_undecorated(&settings_window);
 
     let mut disabled = HashSet::new();
     for (label, webview) in app.webview_windows() {
         if label != "settings" {
-            webview.set_enabled(false).map_err(|e| e.to_string())?;
+            webview.set_enabled(false).map_err(|e| {
+                AppCommandError::window("Failed to update window enabled state", e.to_string())
+            })?;
             disabled.insert(label);
         }
     }
 
     state.set_owner(owner_label);
     state.set_disabled_windows(disabled);
-    settings_window.set_focus().map_err(|e| e.to_string())?;
+    settings_window
+        .set_focus()
+        .map_err(|e| AppCommandError::window("Failed to focus settings window", e.to_string()))?;
     Ok(())
 }
 
