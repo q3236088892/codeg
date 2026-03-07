@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::app_error::{AppCommandError, AppErrorCode};
+use crate::app_error::AppCommandError;
 use crate::db::entities::conversation;
 use crate::db::service::{conversation_service, folder_service, import_service};
 use crate::db::AppDatabase;
@@ -119,7 +119,7 @@ pub async fn list_conversations(
     })
     .await
     .map_err(|e| {
-        AppCommandError::new(AppErrorCode::Unknown, "Failed to list conversations")
+        AppCommandError::task_execution_failed("Failed to list conversations")
             .with_detail(e.to_string())
     })
 }
@@ -136,8 +136,7 @@ pub async fn get_conversation(
             AgentType::OpenCode => Box::new(OpenCodeParser::new()),
             AgentType::Gemini => Box::new(GeminiParser::new()),
             _ => {
-                return Err(AppCommandError::new(
-                    AppErrorCode::InvalidInput,
+                return Err(AppCommandError::invalid_input(
                     "Conversation parsing is not supported for this agent",
                 )
                 .with_detail(format!("agent_type={agent_type}")))
@@ -150,7 +149,7 @@ pub async fn get_conversation(
     })
     .await
     .map_err(|e| {
-        AppCommandError::new(AppErrorCode::Unknown, "Failed to load conversation")
+        AppCommandError::task_execution_failed("Failed to load conversation")
             .with_detail(e.to_string())
     })?
 }
@@ -163,8 +162,7 @@ pub async fn list_folders() -> Result<Vec<FolderInfo>, AppCommandError> {
     })
     .await
     .map_err(|e| {
-        AppCommandError::new(AppErrorCode::Unknown, "Failed to list folders")
-            .with_detail(e.to_string())
+        AppCommandError::task_execution_failed("Failed to list folders").with_detail(e.to_string())
     })?
 }
 
@@ -176,11 +174,8 @@ pub async fn get_stats() -> Result<AgentStats, AppCommandError> {
     })
     .await
     .map_err(|e| {
-        AppCommandError::new(
-            AppErrorCode::Unknown,
-            "Failed to compute conversation stats",
-        )
-        .with_detail(e.to_string())
+        AppCommandError::task_execution_failed("Failed to compute conversation stats")
+            .with_detail(e.to_string())
     })?
 }
 
@@ -194,7 +189,7 @@ pub async fn get_sidebar_data() -> Result<SidebarData, AppCommandError> {
     })
     .await
     .map_err(|e| {
-        AppCommandError::new(AppErrorCode::Unknown, "Failed to build sidebar data")
+        AppCommandError::task_execution_failed("Failed to build sidebar data")
             .with_detail(e.to_string())
     })?
 }
@@ -241,7 +236,7 @@ pub async fn import_local_conversations(
         .await
         .map_err(AppCommandError::from)?
         .ok_or_else(|| {
-            AppCommandError::new(AppErrorCode::NotFound, "Folder not found")
+            AppCommandError::not_found("Folder not found")
                 .with_detail(format!("folder_id={folder_id}"))
         })?;
 
@@ -280,8 +275,7 @@ pub async fn get_folder_conversation(
         })
         .await
         .map_err(|e| {
-            AppCommandError::new(
-                AppErrorCode::Unknown,
+            AppCommandError::task_execution_failed(
                 "Failed to read conversation turns from session file",
             )
             .with_detail(e.to_string())
@@ -350,8 +344,7 @@ pub async fn update_conversation_status(
 ) -> Result<(), AppCommandError> {
     let status_enum: conversation::ConversationStatus =
         serde_json::from_value(serde_json::Value::String(status)).map_err(|e| {
-            AppCommandError::new(AppErrorCode::InvalidInput, "Invalid conversation status")
-                .with_detail(e.to_string())
+            AppCommandError::invalid_input("Invalid conversation status").with_detail(e.to_string())
         })?;
     conversation_service::update_status(&db.conn, conversation_id, status_enum)
         .await
@@ -418,22 +411,20 @@ fn compute_stats(all_conversations: &[ConversationSummary]) -> AgentStats {
 fn parse_error_to_app_error(error: ParseError) -> AppCommandError {
     match error {
         ParseError::ConversationNotFound(id) => {
-            AppCommandError::new(AppErrorCode::NotFound, "Conversation not found").with_detail(id)
+            AppCommandError::not_found("Conversation not found").with_detail(id)
         }
         ParseError::InvalidData(message) => {
-            AppCommandError::new(AppErrorCode::InvalidInput, "Invalid conversation data")
-                .with_detail(message)
+            AppCommandError::invalid_input("Invalid conversation data").with_detail(message)
         }
-        ParseError::Io(err) => AppCommandError::new(AppErrorCode::IoError, "I/O operation failed")
-            .with_detail(err.to_string()),
-        ParseError::Json(err) => AppCommandError::new(
-            AppErrorCode::InvalidInput,
-            "Failed to parse conversation file",
-        )
-        .with_detail(err.to_string()),
-        ParseError::Db(err) => {
-            AppCommandError::new(AppErrorCode::DatabaseError, "Database operation failed")
+        ParseError::Io(err) => AppCommandError::io(err),
+        ParseError::Json(err) => {
+            AppCommandError::invalid_input("Failed to parse conversation file")
                 .with_detail(err.to_string())
         }
+        ParseError::Db(err) => AppCommandError::new(
+            crate::app_error::AppErrorCode::DatabaseError,
+            "Database operation failed",
+        )
+        .with_detail(err.to_string()),
     }
 }

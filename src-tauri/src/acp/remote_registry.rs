@@ -57,21 +57,21 @@ async fn fetch_registry_payload() -> Result<RegistryPayload, AppCommandError> {
         .get(REGISTRY_URL)
         .send()
         .await
-        .map_err(|e| AppCommandError::from(format!("failed to fetch ACP registry: {e}")))?;
+        .map_err(|e| AppCommandError::network(format!("failed to fetch ACP registry: {e}")))?;
     if !response.status().is_success() {
-        return Err(format!(
+        return Err(AppCommandError::network(format!(
             "failed to fetch ACP registry: HTTP {}",
             response.status()
-        )
-        .into());
+        )));
     }
 
     let text = response
         .text()
         .await
-        .map_err(|e| AppCommandError::from(format!("failed to read ACP registry response: {e}")))?;
-    serde_json::from_str::<RegistryPayload>(&text)
-        .map_err(|e| AppCommandError::from(format!("failed to parse ACP registry JSON: {e}")))
+        .map_err(|e| AppCommandError::network(format!("failed to read ACP registry response: {e}")))?;
+    serde_json::from_str::<RegistryPayload>(&text).map_err(|e| {
+        AppCommandError::configuration_invalid(format!("failed to parse ACP registry JSON: {e}"))
+    })
 }
 
 pub async fn fetch_supported_agents() -> Result<Vec<RegistryAgent>, AppCommandError> {

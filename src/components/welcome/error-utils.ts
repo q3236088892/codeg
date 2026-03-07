@@ -56,6 +56,8 @@ function mapCommonCodeToKey(code: string): WelcomeErrorKey {
       return "errors.externalCommandFailed"
     case "window_operation_failed":
       return "errors.windowOperationFailed"
+    case "task_execution_failed":
+      return "errors.unknown"
     default:
       return "errors.unknown"
   }

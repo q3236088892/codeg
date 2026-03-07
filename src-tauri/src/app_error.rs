@@ -20,6 +20,7 @@ pub enum AppErrorCode {
     IoError,
     ExternalCommandFailed,
     WindowOperationFailed,
+    TaskExecutionFailed,
 }
 
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
@@ -48,6 +49,26 @@ impl AppCommandError {
     pub fn db(err: DbError) -> Self {
         Self::new(AppErrorCode::DatabaseError, "Database operation failed")
             .with_detail(err.to_string())
+    }
+
+    pub fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(AppErrorCode::InvalidInput, message)
+    }
+
+    pub fn configuration_invalid(message: impl Into<String>) -> Self {
+        Self::new(AppErrorCode::ConfigurationInvalid, message)
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(AppErrorCode::NotFound, message)
+    }
+
+    pub fn network(message: impl Into<String>) -> Self {
+        Self::new(AppErrorCode::NetworkError, message)
+    }
+
+    pub fn task_execution_failed(message: impl Into<String>) -> Self {
+        Self::new(AppErrorCode::TaskExecutionFailed, message)
     }
 
     #[allow(dead_code)]

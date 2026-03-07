@@ -1599,10 +1599,7 @@ pub async fn start_file_tree_watch(
 
     {
         let mut watchers = FILE_WATCHERS.lock().map_err(|_| {
-            AppCommandError::new(
-                AppErrorCode::Unknown,
-                "Failed to lock file watcher registry",
-            )
+            AppCommandError::task_execution_failed("Failed to lock file watcher registry")
         })?;
         if let Some(entry) = watchers.get_mut(&key) {
             entry.ref_count += 1;
@@ -1646,9 +1643,7 @@ pub async fn start_file_tree_watch(
 
     watcher
         .as_mut()
-        .ok_or_else(|| {
-            AppCommandError::new(AppErrorCode::Unknown, "Failed to create file watcher")
-        })?
+        .ok_or_else(|| AppCommandError::task_execution_failed("Failed to create file watcher"))?
         .watch(&root_canonical, RecursiveMode::Recursive)
         .map_err(|e| {
             AppCommandError::new(AppErrorCode::IoError, "Failed to start file watcher")
@@ -1657,10 +1652,7 @@ pub async fn start_file_tree_watch(
 
     let should_cleanup_new_watcher = {
         let mut watchers = FILE_WATCHERS.lock().map_err(|_| {
-            AppCommandError::new(
-                AppErrorCode::Unknown,
-                "Failed to lock file watcher registry",
-            )
+            AppCommandError::task_execution_failed("Failed to lock file watcher registry")
         })?;
         if let Some(entry) = watchers.get_mut(&key) {
             entry.ref_count += 1;
@@ -1672,8 +1664,7 @@ pub async fn start_file_tree_watch(
                     root_canonical,
                     root_display: root_path,
                     watcher: watcher.take().ok_or_else(|| {
-                        AppCommandError::new(
-                            AppErrorCode::Unknown,
+                        AppCommandError::task_execution_failed(
                             "Failed to initialize file watcher state",
                         )
                     })?,
@@ -1705,10 +1696,7 @@ pub async fn stop_file_tree_watch(root_path: String) -> Result<(), AppCommandErr
         .unwrap_or_else(|_| normalize_slash_path(&root));
 
     let mut watchers = FILE_WATCHERS.lock().map_err(|_| {
-        AppCommandError::new(
-            AppErrorCode::Unknown,
-            "Failed to lock file watcher registry",
-        )
+        AppCommandError::task_execution_failed("Failed to lock file watcher registry")
     })?;
 
     let target_key = if watchers.contains_key(&key) {
@@ -1945,13 +1933,13 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, AppCommandError> + Send + 'static,
 {
-    let _permit = FILE_IO_SEMAPHORE.acquire().await.map_err(|_| {
-        AppCommandError::new(AppErrorCode::Unknown, "File I/O runtime is unavailable")
-    })?;
+    let _permit = FILE_IO_SEMAPHORE
+        .acquire()
+        .await
+        .map_err(|_| AppCommandError::task_execution_failed("File I/O runtime is unavailable"))?;
 
     tokio::task::spawn_blocking(f).await.map_err(|e| {
-        AppCommandError::new(AppErrorCode::Unknown, "File I/O task failed")
-            .with_detail(e.to_string())
+        AppCommandError::task_execution_failed("File I/O task failed").with_detail(e.to_string())
     })?
 }
 
