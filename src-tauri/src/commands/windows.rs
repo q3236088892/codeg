@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use crate::app_error::AppCommandError;
+use crate::app_error::{AppCommandError, AppErrorCode};
 use crate::db::AppDatabase;
 use crate::models::FolderHistoryEntry;
 
@@ -152,7 +152,7 @@ fn resolve_settings_target(section: Option<&str>, agent_type: Option<&str>) -> S
 pub async fn list_open_folders(
     app: AppHandle,
     db: tauri::State<'_, AppDatabase>,
-) -> Result<Vec<FolderHistoryEntry>, String> {
+) -> Result<Vec<FolderHistoryEntry>, AppCommandError> {
     let windows = app.webview_windows();
     let mut folder_ids: Vec<i32> = Vec::new();
 
@@ -166,7 +166,7 @@ pub async fn list_open_folders(
 
     let all_folders = crate::db::service::folder_service::list_folders(&db.conn)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
     let open_folders: Vec<FolderHistoryEntry> = all_folders
         .into_iter()
@@ -177,19 +177,27 @@ pub async fn list_open_folders(
 }
 
 #[tauri::command]
-pub async fn focus_folder_window(app: AppHandle, folder_id: i32) -> Result<(), String> {
+pub async fn focus_folder_window(app: AppHandle, folder_id: i32) -> Result<(), AppCommandError> {
     let windows = app.webview_windows();
     for (label, window) in &windows {
         if label.starts_with("folder-") {
             if let Some(id) = get_folder_id_from_window(window) {
                 if id == folder_id {
-                    window.set_focus().map_err(|e| e.to_string())?;
+                    window.set_focus().map_err(|e| {
+                        AppCommandError::window("Failed to focus folder window", e.to_string())
+                    })?;
                     return Ok(());
                 }
             }
         }
     }
-    Err(format!("No open window for folder {}", folder_id))
+    Err(
+        AppCommandError::new(
+            AppErrorCode::NotFound,
+            format!("No open window for folder {folder_id}"),
+        )
+        .with_detail(format!("folder_id={folder_id}")),
+    )
 }
 
 #[tauri::command]
@@ -231,24 +239,34 @@ pub async fn open_commit_window(
     db: tauri::State<'_, AppDatabase>,
     state: tauri::State<'_, CommitWindowState>,
     folder_id: i32,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     let owner_label = window.label().to_string();
     let label = format!("commit-{folder_id}");
 
     if let Some(existing) = app.get_webview_window(&label) {
         if let Some(owner_window) = app.get_webview_window(&owner_label) {
-            owner_window.set_enabled(false).map_err(|e| e.to_string())?;
+            owner_window.set_enabled(false).map_err(|e| {
+                AppCommandError::window("Failed to disable owner window", e.to_string())
+            })?;
         }
         state.set_owner(label.clone(), owner_label);
         let _ = existing.unminimize();
-        existing.set_focus().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| {
+            AppCommandError::window("Failed to focus commit window", e.to_string())
+        })?;
         return Ok(());
     }
 
     let folder = crate::db::service::folder_service::get_folder_by_id(&db.conn, folder_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Folder {} not found", folder_id))?;
+        .map_err(AppCommandError::from)?
+        .ok_or_else(|| {
+            AppCommandError::new(
+                AppErrorCode::NotFound,
+                format!("Folder {folder_id} not found"),
+            )
+            .with_detail(format!("folder_id={folder_id}"))
+        })?;
 
     let url = WebviewUrl::App(format!("commit?folderId={folder_id}").into());
     let builder = WebviewWindowBuilder::new(&app, &label, url)
@@ -259,16 +277,21 @@ pub async fn open_commit_window(
         .center();
     let commit_window = apply_platform_window_style(builder)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppCommandError::window("Failed to open commit window", e.to_string()))?;
     ensure_windows_undecorated(&commit_window);
     if let Some(owner_window) = app.get_webview_window(&owner_label) {
         if let Err(err) = owner_window.set_enabled(false) {
             let _ = commit_window.close();
-            return Err(err.to_string());
+            return Err(AppCommandError::window(
+                "Failed to disable owner window",
+                err.to_string(),
+            ));
         }
     }
     state.set_owner(label, owner_label);
-    commit_window.set_focus().map_err(|e| e.to_string())?;
+    commit_window
+        .set_focus()
+        .map_err(|e| AppCommandError::window("Failed to focus commit window", e.to_string()))?;
 
     Ok(())
 }
@@ -359,7 +382,7 @@ pub fn restore_window_after_commit(
     }
 }
 
-pub fn open_welcome_window(app: &AppHandle) -> Result<(), String> {
+pub fn open_welcome_window(app: &AppHandle) -> Result<(), AppCommandError> {
     if let Some(existing) = app.get_webview_window("welcome") {
         ensure_windows_undecorated(&existing);
         return Ok(());
@@ -372,7 +395,7 @@ pub fn open_welcome_window(app: &AppHandle) -> Result<(), String> {
         .center();
     let welcome_window = apply_platform_window_style(builder)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppCommandError::window("Failed to open welcome window", e.to_string()))?;
     ensure_windows_undecorated(&welcome_window);
     Ok(())
 }

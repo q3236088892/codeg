@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::app_error::{AppCommandError, AppErrorCode};
 use crate::db::entities::conversation;
 use crate::db::service::{conversation_service, folder_service, import_service};
 use crate::db::AppDatabase;
@@ -8,7 +9,7 @@ use crate::parsers::claude::ClaudeParser;
 use crate::parsers::codex::CodexParser;
 use crate::parsers::gemini::GeminiParser;
 use crate::parsers::opencode::OpenCodeParser;
-use crate::parsers::{path_eq_for_matching, AgentParser};
+use crate::parsers::{path_eq_for_matching, AgentParser, ParseError};
 
 #[tauri::command]
 pub async fn list_folder_conversations(
@@ -18,10 +19,10 @@ pub async fn list_folder_conversations(
     search: Option<String>,
     sort_by: Option<String>,
     status: Option<String>,
-) -> Result<Vec<DbConversationSummary>, String> {
+) -> Result<Vec<DbConversationSummary>, AppCommandError> {
     conversation_service::list_by_folder(&db.conn, folder_id, agent_type, search, sort_by, status)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppCommandError::from)
 }
 
 /// Synchronous implementation shared by list_conversations, list_folders, and get_stats.
@@ -30,7 +31,7 @@ fn list_conversations_sync(
     search: Option<String>,
     sort_by: Option<String>,
     folder_path: Option<String>,
-) -> Result<Vec<ConversationSummary>, String> {
+) -> Vec<ConversationSummary> {
     let mut all_conversations = Vec::new();
     let mut seen_keys = HashSet::new();
 
@@ -103,7 +104,7 @@ fn list_conversations_sync(
         _ => all_conversations.sort_by(|a, b| b.started_at.cmp(&a.started_at)), // default: newest first
     }
 
-    Ok(all_conversations)
+    all_conversations
 }
 
 #[tauri::command]
@@ -112,70 +113,89 @@ pub async fn list_conversations(
     search: Option<String>,
     sort_by: Option<String>,
     folder_path: Option<String>,
-) -> Result<Vec<ConversationSummary>, String> {
+) -> Result<Vec<ConversationSummary>, AppCommandError> {
     tokio::task::spawn_blocking(move || {
         list_conversations_sync(agent_type, search, sort_by, folder_path)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| {
+        AppCommandError::new(AppErrorCode::Unknown, "Failed to list conversations")
+            .with_detail(e.to_string())
+    })
 }
 
 #[tauri::command]
 pub async fn get_conversation(
     agent_type: AgentType,
     conversation_id: String,
-) -> Result<ConversationDetail, String> {
-    tokio::task::spawn_blocking(move || {
+) -> Result<ConversationDetail, AppCommandError> {
+    tokio::task::spawn_blocking(move || -> Result<ConversationDetail, AppCommandError> {
         let parser: Box<dyn AgentParser> = match agent_type {
             AgentType::ClaudeCode => Box::new(ClaudeParser::new()),
             AgentType::Codex => Box::new(CodexParser::new()),
             AgentType::OpenCode => Box::new(OpenCodeParser::new()),
             AgentType::Gemini => Box::new(GeminiParser::new()),
             _ => {
-                return Err(format!(
-                    "conversation parsing not supported for {agent_type}"
-                ))
+                return Err(
+                    AppCommandError::new(
+                        AppErrorCode::InvalidInput,
+                        "Conversation parsing is not supported for this agent",
+                    )
+                    .with_detail(format!("agent_type={agent_type}")),
+                )
             }
         };
 
         parser
             .get_conversation(&conversation_id)
-            .map_err(|e| e.to_string())
+            .map_err(parse_error_to_app_error)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| {
+        AppCommandError::new(AppErrorCode::Unknown, "Failed to load conversation")
+            .with_detail(e.to_string())
+    })?
 }
 
 #[tauri::command]
-pub async fn list_folders() -> Result<Vec<FolderInfo>, String> {
-    tokio::task::spawn_blocking(move || {
-        let all_conversations = list_conversations_sync(None, None, None, None)?;
+pub async fn list_folders() -> Result<Vec<FolderInfo>, AppCommandError> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<FolderInfo>, AppCommandError> {
+        let all_conversations = list_conversations_sync(None, None, None, None);
         Ok(compute_folders(&all_conversations))
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| {
+        AppCommandError::new(AppErrorCode::Unknown, "Failed to list folders")
+            .with_detail(e.to_string())
+    })?
 }
 
 #[tauri::command]
-pub async fn get_stats() -> Result<AgentStats, String> {
-    tokio::task::spawn_blocking(move || {
-        let all_conversations = list_conversations_sync(None, None, None, None)?;
-        compute_stats(&all_conversations)
+pub async fn get_stats() -> Result<AgentStats, AppCommandError> {
+    tokio::task::spawn_blocking(move || -> Result<AgentStats, AppCommandError> {
+        let all_conversations = list_conversations_sync(None, None, None, None);
+        Ok(compute_stats(&all_conversations))
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| {
+        AppCommandError::new(AppErrorCode::Unknown, "Failed to compute conversation stats")
+            .with_detail(e.to_string())
+    })?
 }
 
 #[tauri::command]
-pub async fn get_sidebar_data() -> Result<SidebarData, String> {
-    tokio::task::spawn_blocking(move || {
-        let all_conversations = list_conversations_sync(None, None, None, None)?;
+pub async fn get_sidebar_data() -> Result<SidebarData, AppCommandError> {
+    tokio::task::spawn_blocking(move || -> Result<SidebarData, AppCommandError> {
+        let all_conversations = list_conversations_sync(None, None, None, None);
         let folders = compute_folders(&all_conversations);
-        let stats = compute_stats(&all_conversations)?;
+        let stats = compute_stats(&all_conversations);
         Ok(SidebarData { folders, stats })
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| {
+        AppCommandError::new(AppErrorCode::Unknown, "Failed to build sidebar data")
+            .with_detail(e.to_string())
+    })?
 }
 
 fn compute_folders(all_conversations: &[ConversationSummary]) -> Vec<FolderInfo> {
@@ -215,30 +235,33 @@ fn compute_folders(all_conversations: &[ConversationSummary]) -> Vec<FolderInfo>
 pub async fn import_local_conversations(
     db: tauri::State<'_, AppDatabase>,
     folder_id: i32,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, AppCommandError> {
     let folder = folder_service::get_folder_by_id(&db.conn, folder_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Folder not found: {folder_id}"))?;
+        .map_err(AppCommandError::from)?
+        .ok_or_else(|| {
+            AppCommandError::new(AppErrorCode::NotFound, "Folder not found")
+                .with_detail(format!("folder_id={folder_id}"))
+        })?;
 
     import_service::import_local_conversations(&db.conn, folder_id, &folder.path)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppCommandError::from)
 }
 
 #[tauri::command]
 pub async fn get_folder_conversation(
     db: tauri::State<'_, AppDatabase>,
     conversation_id: i32,
-) -> Result<DbConversationDetail, String> {
+) -> Result<DbConversationDetail, AppCommandError> {
     let summary = conversation_service::get_by_id(&db.conn, conversation_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
     let (turns, session_stats) = if let Some(ref ext_id) = summary.external_id {
         let at = summary.agent_type;
         let eid = ext_id.clone();
-        tokio::task::spawn_blocking(move || -> Result<_, String> {
+        tokio::task::spawn_blocking(move || -> Result<_, AppCommandError> {
             let parser: Box<dyn AgentParser> = match at {
                 AgentType::ClaudeCode => Box::new(ClaudeParser::new()),
                 AgentType::Codex => Box::new(CodexParser::new()),
@@ -251,12 +274,17 @@ pub async fn get_folder_conversation(
             match parser.get_conversation(&eid) {
                 Ok(d) => Ok((d.turns, d.session_stats)),
                 Err(crate::parsers::ParseError::ConversationNotFound(_)) => Ok((vec![], None)),
-                Err(e) => Err(e.to_string()),
+                Err(e) => Err(parse_error_to_app_error(e)),
             }
         })
         .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e: String| e)?
+        .map_err(|e| {
+            AppCommandError::new(
+                AppErrorCode::Unknown,
+                "Failed to read conversation turns from session file",
+            )
+            .with_detail(e.to_string())
+        })??
     } else {
         (vec![], None)
     };
@@ -277,11 +305,11 @@ pub async fn create_conversation(
     folder_id: i32,
     agent_type: AgentType,
     title: Option<String>,
-) -> Result<i32, String> {
+) -> Result<i32, AppCommandError> {
     // Detect current git branch from the folder path
     let git_branch = if let Some(folder) = folder_service::get_folder_by_id(&db.conn, folder_id)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(AppCommandError::from)?
     {
         detect_git_branch(&folder.path).await
     } else {
@@ -290,7 +318,7 @@ pub async fn create_conversation(
 
     let model = conversation_service::create(&db.conn, folder_id, agent_type, title, git_branch)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
     Ok(model.id)
 }
 
@@ -318,12 +346,17 @@ pub async fn update_conversation_status(
     db: tauri::State<'_, AppDatabase>,
     conversation_id: i32,
     status: String,
-) -> Result<(), String> {
-    let status_enum: conversation::ConversationStatus =
-        serde_json::from_value(serde_json::Value::String(status)).map_err(|e| e.to_string())?;
+) -> Result<(), AppCommandError> {
+    let status_enum: conversation::ConversationStatus = serde_json::from_value(
+        serde_json::Value::String(status),
+    )
+    .map_err(|e| {
+        AppCommandError::new(AppErrorCode::InvalidInput, "Invalid conversation status")
+            .with_detail(e.to_string())
+    })?;
     conversation_service::update_status(&db.conn, conversation_id, status_enum)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppCommandError::from)
 }
 
 #[tauri::command]
@@ -331,10 +364,10 @@ pub async fn update_conversation_title(
     db: tauri::State<'_, AppDatabase>,
     conversation_id: i32,
     title: String,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     conversation_service::update_title(&db.conn, conversation_id, title)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppCommandError::from)
 }
 
 #[tauri::command]
@@ -342,23 +375,23 @@ pub async fn update_conversation_external_id(
     db: tauri::State<'_, AppDatabase>,
     conversation_id: i32,
     external_id: String,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     conversation_service::update_external_id(&db.conn, conversation_id, external_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppCommandError::from)
 }
 
 #[tauri::command]
 pub async fn delete_conversation(
     db: tauri::State<'_, AppDatabase>,
     conversation_id: i32,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     conversation_service::soft_delete(&db.conn, conversation_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppCommandError::from)
 }
 
-fn compute_stats(all_conversations: &[ConversationSummary]) -> Result<AgentStats, String> {
+fn compute_stats(all_conversations: &[ConversationSummary]) -> AgentStats {
     let mut total_messages: u32 = 0;
     let mut counts: HashMap<AgentType, u32> = HashMap::new();
 
@@ -376,9 +409,32 @@ fn compute_stats(all_conversations: &[ConversationSummary]) -> Result<AgentStats
         .collect();
     by_agent.sort_by(|a, b| b.conversation_count.cmp(&a.conversation_count));
 
-    Ok(AgentStats {
+    AgentStats {
         total_conversations: all_conversations.len() as u32,
         total_messages,
         by_agent,
-    })
+    }
+}
+
+fn parse_error_to_app_error(error: ParseError) -> AppCommandError {
+    match error {
+        ParseError::ConversationNotFound(id) => {
+            AppCommandError::new(AppErrorCode::NotFound, "Conversation not found")
+                .with_detail(id)
+        }
+        ParseError::InvalidData(message) => {
+            AppCommandError::new(AppErrorCode::InvalidInput, "Invalid conversation data")
+                .with_detail(message)
+        }
+        ParseError::Io(err) => AppCommandError::new(AppErrorCode::IoError, "I/O operation failed")
+            .with_detail(err.to_string()),
+        ParseError::Json(err) => {
+            AppCommandError::new(AppErrorCode::InvalidInput, "Failed to parse conversation file")
+                .with_detail(err.to_string())
+        }
+        ParseError::Db(err) => {
+            AppCommandError::new(AppErrorCode::DatabaseError, "Database operation failed")
+                .with_detail(err.to_string())
+        }
+    }
 }

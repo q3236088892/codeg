@@ -1,6 +1,7 @@
 use sea_orm::DatabaseConnection;
 use tauri::State;
 
+use crate::app_error::{AppCommandError, AppErrorCode};
 use crate::db::service::app_metadata_service;
 use crate::db::AppDatabase;
 use crate::models::{SystemLanguageSettings, SystemProxySettings};
@@ -9,7 +10,9 @@ use crate::network::proxy;
 const SYSTEM_PROXY_SETTINGS_KEY: &str = "system_proxy_settings";
 const SYSTEM_LANGUAGE_SETTINGS_KEY: &str = "system_language_settings";
 
-fn normalize_proxy_settings(settings: SystemProxySettings) -> Result<SystemProxySettings, String> {
+fn normalize_proxy_settings(
+    settings: SystemProxySettings,
+) -> Result<SystemProxySettings, AppCommandError> {
     if !settings.enabled {
         let proxy_url = settings
             .proxy_url
@@ -29,9 +32,17 @@ fn normalize_proxy_settings(settings: SystemProxySettings) -> Result<SystemProxy
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| "proxy url is required when proxy is enabled".to_string())?;
+        .ok_or_else(|| {
+            AppCommandError::new(
+                AppErrorCode::InvalidInput,
+                "Proxy URL is required when proxy is enabled",
+            )
+        })?;
 
-    reqwest::Proxy::all(proxy_url).map_err(|e| format!("invalid proxy url: {e}"))?;
+    reqwest::Proxy::all(proxy_url).map_err(|e| {
+        AppCommandError::new(AppErrorCode::InvalidInput, "Invalid proxy URL")
+            .with_detail(e.to_string())
+    })?;
 
     Ok(SystemProxySettings {
         enabled: true,
@@ -41,39 +52,49 @@ fn normalize_proxy_settings(settings: SystemProxySettings) -> Result<SystemProxy
 
 pub(crate) async fn load_system_proxy_settings(
     conn: &DatabaseConnection,
-) -> Result<SystemProxySettings, String> {
+) -> Result<SystemProxySettings, AppCommandError> {
     let raw = app_metadata_service::get_value(conn, SYSTEM_PROXY_SETTINGS_KEY)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
     let Some(raw) = raw else {
         return Ok(SystemProxySettings::default());
     };
 
-    let parsed = serde_json::from_str::<SystemProxySettings>(&raw)
-        .map_err(|e| format!("failed to parse stored proxy settings: {e}"))?;
+    let parsed = serde_json::from_str::<SystemProxySettings>(&raw).map_err(|e| {
+        AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Failed to parse stored proxy settings",
+        )
+        .with_detail(e.to_string())
+    })?;
     normalize_proxy_settings(parsed)
 }
 
 pub(crate) async fn load_system_language_settings(
     conn: &DatabaseConnection,
-) -> Result<SystemLanguageSettings, String> {
+) -> Result<SystemLanguageSettings, AppCommandError> {
     let raw = app_metadata_service::get_value(conn, SYSTEM_LANGUAGE_SETTINGS_KEY)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
     let Some(raw) = raw else {
         return Ok(SystemLanguageSettings::default());
     };
 
-    serde_json::from_str::<SystemLanguageSettings>(&raw)
-        .map_err(|e| format!("failed to parse stored language settings: {e}"))
+    serde_json::from_str::<SystemLanguageSettings>(&raw).map_err(|e| {
+        AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Failed to parse stored language settings",
+        )
+        .with_detail(e.to_string())
+    })
 }
 
 #[tauri::command]
 pub async fn get_system_proxy_settings(
     db: State<'_, AppDatabase>,
-) -> Result<SystemProxySettings, String> {
+) -> Result<SystemProxySettings, AppCommandError> {
     load_system_proxy_settings(&db.conn).await
 }
 
@@ -81,22 +102,34 @@ pub async fn get_system_proxy_settings(
 pub async fn update_system_proxy_settings(
     settings: SystemProxySettings,
     db: State<'_, AppDatabase>,
-) -> Result<SystemProxySettings, String> {
+) -> Result<SystemProxySettings, AppCommandError> {
     let normalized = normalize_proxy_settings(settings)?;
-    let serialized = serde_json::to_string(&normalized).map_err(|e| e.to_string())?;
+    let serialized = serde_json::to_string(&normalized).map_err(|e| {
+        AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Failed to serialize proxy settings",
+        )
+        .with_detail(e.to_string())
+    })?;
 
     app_metadata_service::upsert_value(&db.conn, SYSTEM_PROXY_SETTINGS_KEY, &serialized)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
-    proxy::apply_system_proxy_settings(&normalized)?;
+    proxy::apply_system_proxy_settings(&normalized).map_err(|e| {
+        AppCommandError::new(
+            AppErrorCode::ExternalCommandFailed,
+            "Failed to apply system proxy settings",
+        )
+        .with_detail(e)
+    })?;
     Ok(normalized)
 }
 
 #[tauri::command]
 pub async fn get_system_language_settings(
     db: State<'_, AppDatabase>,
-) -> Result<SystemLanguageSettings, String> {
+) -> Result<SystemLanguageSettings, AppCommandError> {
     load_system_language_settings(&db.conn).await
 }
 
@@ -104,12 +137,18 @@ pub async fn get_system_language_settings(
 pub async fn update_system_language_settings(
     settings: SystemLanguageSettings,
     db: State<'_, AppDatabase>,
-) -> Result<SystemLanguageSettings, String> {
-    let serialized = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+) -> Result<SystemLanguageSettings, AppCommandError> {
+    let serialized = serde_json::to_string(&settings).map_err(|e| {
+        AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Failed to serialize language settings",
+        )
+        .with_detail(e.to_string())
+    })?;
 
     app_metadata_service::upsert_value(&db.conn, SYSTEM_LANGUAGE_SETTINGS_KEY, &serialized)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::from)?;
 
     Ok(settings)
 }
