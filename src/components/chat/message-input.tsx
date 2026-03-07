@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { FileSearch, Plus, Send, Square, X } from "lucide-react"
@@ -114,7 +115,7 @@ function SelectorLoadingChip({ label }: { label: string }) {
 
 export function MessageInput({
   onSend,
-  placeholder = "Ask anything...",
+  placeholder,
   defaultPath,
   disabled = false,
   autoFocus = false,
@@ -133,7 +134,9 @@ export function MessageInput({
   attachmentTabId,
   draftStorageKey,
 }: MessageInputProps) {
+  const t = useTranslations("Folder.chat.messageInput")
   const effectiveDraftStorageKey = draftStorageKey ?? attachmentTabId ?? null
+  const resolvedPlaceholder = placeholder ?? t("askAnything")
   const [text, setText] = useState(() => {
     if (!effectiveDraftStorageKey) return ""
     return loadMessageInputDraft(effectiveDraftStorageKey) ?? ""
@@ -388,7 +391,7 @@ export function MessageInput({
         onCompositionStart={() => (composingRef.current = true)}
         onCompositionEnd={() => (composingRef.current = false)}
         onFocus={onFocus}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         className={cn(
           "text-sm pr-12 resize-none bg-transparent",
           topPaddingClass,
@@ -411,7 +414,9 @@ export function MessageInput({
                   type="button"
                   onClick={() => removeAttachment(attachment.path)}
                   className="rounded-sm p-0.5 hover:bg-muted-foreground/15"
-                  aria-label={`Remove ${attachment.name}`}
+                  aria-label={t("removeAttachmentAria", {
+                    name: attachment.name,
+                  })}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -428,12 +433,12 @@ export function MessageInput({
             variant="ghost"
             size="icon"
             className="h-6 w-6 shrink-0"
-            title="Attach files"
+            title={t("attachFiles")}
           >
             <Plus className="size-4" />
           </Button>
           {showConfigLoading && (
-            <SelectorLoadingChip label="Loading settings..." />
+            <SelectorLoadingChip label={t("loadingSettings")} />
           )}
           {hasConfigOptions &&
             availableConfigOptions.map((option) => (
@@ -445,7 +450,7 @@ export function MessageInput({
                 }
               />
             ))}
-          {showModeLoading && <SelectorLoadingChip label="Loading mode..." />}
+          {showModeLoading && <SelectorLoadingChip label={t("loadingMode")} />}
           {showModeSelector && effectiveModeId && (
             <ModeSelector
               modes={availableModes}
@@ -461,7 +466,7 @@ export function MessageInput({
           variant="destructive"
           size="icon"
           className="absolute right-2 bottom-2"
-          title="Cancel"
+          title={t("cancel")}
         >
           <Square className="h-4 w-4" />
         </Button>
@@ -471,7 +476,7 @@ export function MessageInput({
           disabled={disabled || !hasSendableContent}
           size="icon"
           className="absolute right-2 bottom-2"
-          title="Send"
+          title={t("send")}
         >
           <Send className="h-4 w-4" />
         </Button>

@@ -1022,6 +1022,74 @@
         "add": "添加",
         "saving": "保存中..."
       }
+    },
+    "chat": {
+      "chatInput": {
+        "connecting": "连接中...",
+        "agentResponding": "Agent 正在响应...",
+        "sendMessage": "发送消息..."
+      },
+      "messageInput": {
+        "askAnything": "请开始输入...",
+        "removeAttachmentAria": "移除 {name}",
+        "attachFiles": "附加文件",
+        "loadingSettings": "正在加载设置...",
+        "loadingMode": "正在加载模式...",
+        "cancel": "取消",
+        "send": "发送"
+      },
+      "welcomeInputPanel": {
+        "agentsSettingsPath": "设置 > Agents",
+        "autoConnectFallback": "点击前往 {path} 管理安装。",
+        "autoConnectAppend": "{message}，点击前往 {path} 管理安装。",
+        "enableAgentFirstPlaceholder": "请先启用至少一个 Agent 后开始会话...",
+        "askAnythingPlaceholder": "请开始输入..."
+      },
+      "agentSelector": {
+        "noEnabledAgents": "暂无已启用的 Agent",
+        "openAgentsSettings": "打开 Agents 设置"
+      },
+      "liveMessageBlock": {
+        "assistantThinkingAria": "助手正在思考"
+      },
+      "agentPlanOverlay": {
+        "title": "Agent 计划",
+        "collapsePlanAria": "折叠计划",
+        "collapsedSummary": "计划 {completed}/{total}",
+        "status": {
+          "completed": "已完成",
+          "inProgress": "进行中",
+          "pending": "待处理",
+          "unknown": "未知"
+        },
+        "priority": {
+          "high": "高",
+          "medium": "中",
+          "low": "低",
+          "unknown": "未知"
+        }
+      },
+      "permissionDialog": {
+        "subtitle": "Agent 请求继续当前轮次的权限。",
+        "kindFallbackTool": "工具",
+        "command": "命令",
+        "cwd": "工作目录：{cwd}",
+        "filesSummary": "文件：{count}",
+        "moreFiles": "+{count} 个更多文件",
+        "plan": "计划",
+        "targetMode": "目标模式：{mode}"
+      }
+    },
+    "diffPreview": {
+      "mode": {
+        "added": "新增",
+        "deleted": "删除",
+        "renamed": "重命名",
+        "modified": "修改"
+      },
+      "hunkLabel": "代码块 {index}",
+      "loadingHunk": "正在加载代码块...",
+      "noDiffData": "无差异数据"
     }
   }
 }

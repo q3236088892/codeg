@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import dynamic from "next/dynamic"
 import type { editor as MonacoEditorNs } from "monaco-editor"
+import { useTranslations } from "next-intl"
 import { useFolderContext } from "@/contexts/folder-context"
 import { defineMonacoThemes, useMonacoThemeSync } from "@/lib/monaco-themes"
 import { cn } from "@/lib/utils"
@@ -414,11 +415,13 @@ function parseUnifiedDiff(diffText: string): ParsedDiffFile[] {
     .filter((file) => file.hunks.length > 0)
 }
 
-function modeLabel(mode: DiffFileMode): string {
-  if (mode === "added") return "新增"
-  if (mode === "deleted") return "删除"
-  if (mode === "renamed") return "重命名"
-  return "修改"
+function modeKey(
+  mode: DiffFileMode
+): "mode.added" | "mode.deleted" | "mode.renamed" | "mode.modified" {
+  if (mode === "added") return "mode.added"
+  if (mode === "deleted") return "mode.deleted"
+  if (mode === "renamed") return "mode.renamed"
+  return "mode.modified"
 }
 
 function toDisplayPath(filePath: string, folderPath: string | null): string {
@@ -434,11 +437,6 @@ function toDisplayPath(filePath: string, folderPath: string | null): string {
   }
 
   return normalizedPath
-}
-
-function hunkLabel(hunk: ParsedDiffHunk, index: number): string {
-  void hunk
-  return `Hunk ${index + 1}`
 }
 
 function countHunkChanges(hunk: ParsedDiffHunk): {
@@ -485,6 +483,7 @@ function HunkMonacoPreview({
   modelId: string
   theme: string
 }) {
+  const t = useTranslations("Folder.diffPreview")
   const editorRef = useRef<MonacoEditorNs.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<string[]>([])
 
@@ -567,7 +566,7 @@ function HunkMonacoPreview({
       theme={theme}
       loading={
         <div className="h-28 flex items-center justify-center text-xs text-muted-foreground">
-          Loading hunk...
+          {t("loadingHunk")}
         </div>
       }
       options={{
@@ -601,6 +600,7 @@ export function UnifiedDiffPreview({
   modelId?: string
   className?: string
 }) {
+  const t = useTranslations("Folder.diffPreview")
   const { folder } = useFolderContext()
   const files = useMemo(() => parseUnifiedDiff(diffText), [diffText])
   const theme = useMonacoThemeSync()
@@ -613,7 +613,7 @@ export function UnifiedDiffPreview({
           className
         )}
       >
-        No diff data
+        {t("noDiffData")}
       </div>
     )
   }
@@ -638,7 +638,7 @@ export function UnifiedDiffPreview({
           >
             <header className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-[11px]">
               <span className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {modeLabel(file.mode)}
+                {t(modeKey(file.mode))}
               </span>
               <span
                 className="min-w-0 flex-1 truncate font-mono text-foreground"
@@ -666,7 +666,7 @@ export function UnifiedDiffPreview({
                     className="rounded-md border border-border"
                   >
                     <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-2 py-1 text-[10px] font-mono text-muted-foreground">
-                      <span>{hunkLabel(hunk, index)}</span>
+                      <span>{t("hunkLabel", { index: index + 1 })}</span>
                       <span className="ml-auto inline-flex items-center gap-2">
                         <span className="text-green-700 dark:text-green-400">
                           +{hunkStats.additions}

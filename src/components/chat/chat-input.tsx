@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import type {
   ConnectionStatus,
   PromptDraft,
@@ -44,6 +45,7 @@ export function ChatInput({
   attachmentTabId,
   draftStorageKey,
 }: ChatInputProps) {
+  const t = useTranslations("Folder.chat.chatInput")
   const isConnected = status === "connected"
   const isPrompting = status === "prompting"
   const isConnecting = status === "connecting" || status === "downloading"
@@ -69,10 +71,10 @@ export function ChatInput({
         draftStorageKey={draftStorageKey}
         placeholder={
           isConnecting
-            ? "Connecting..."
+            ? t("connecting")
             : isPrompting
-              ? "Agent is responding..."
-              : "Send a message..."
+              ? t("agentResponding")
+              : t("sendMessage")
         }
         className="min-h-28 max-h-60"
       />

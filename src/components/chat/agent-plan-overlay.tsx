@@ -1,6 +1,7 @@
 "use client"
 
 import { memo, useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { LiveMessage } from "@/contexts/acp-connections-context"
@@ -36,29 +37,41 @@ function getLatestPlanEntries(message: LiveMessage | null): PlanEntryInfo[] {
   return []
 }
 
-function getStatusLabel(status: string): string {
+function getStatusKey(
+  status: string
+):
+  | "status.completed"
+  | "status.inProgress"
+  | "status.pending"
+  | "status.unknown" {
   switch (status) {
     case "completed":
-      return "Completed"
+      return "status.completed"
     case "in_progress":
-      return "In Progress"
+      return "status.inProgress"
     case "pending":
-      return "Pending"
+      return "status.pending"
     default:
-      return "Unknown"
+      return "status.unknown"
   }
 }
 
-function getPriorityLabel(priority: string): string {
+type PriorityKey =
+  | "priority.high"
+  | "priority.medium"
+  | "priority.low"
+  | "priority.unknown"
+
+function getPriorityKey(priority: string): PriorityKey {
   switch (priority) {
     case "high":
-      return "High"
+      return "priority.high"
     case "medium":
-      return "Medium"
+      return "priority.medium"
     case "low":
-      return "Low"
+      return "priority.low"
     default:
-      return "Unknown"
+      return "priority.unknown"
   }
 }
 
@@ -94,6 +107,7 @@ export const AgentPlanOverlay = memo(function AgentPlanOverlay({
   visible = true,
   defaultExpanded = true,
 }: AgentPlanOverlayProps) {
+  const t = useTranslations("Folder.chat.agentPlanOverlay")
   const liveEntries = useMemo(
     () => getLatestPlanEntries(message ?? null),
     [message]
@@ -146,7 +160,10 @@ export const AgentPlanOverlay = memo(function AgentPlanOverlay({
           }
         >
           <ListTodoIcon className="h-4 w-4" />
-          Plan {completedCount}/{resolvedEntries.length}
+          {t("collapsedSummary", {
+            completed: completedCount,
+            total: resolvedEntries.length,
+          })}
           <ChevronUpIcon className="h-4 w-4" />
         </Button>
       </div>
@@ -162,7 +179,7 @@ export const AgentPlanOverlay = memo(function AgentPlanOverlay({
         <div className="flex items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-2 min-w-0">
             <ListTodoIcon className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium truncate">Agent Plan</span>
+            <span className="text-sm font-medium truncate">{t("title")}</span>
             <Badge variant="secondary" className="h-5">
               {completedCount}/{resolvedEntries.length}
             </Badge>
@@ -171,7 +188,7 @@ export const AgentPlanOverlay = memo(function AgentPlanOverlay({
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Collapse plan"
+            aria-label={t("collapsePlanAria")}
             onClick={() =>
               setCollapsedByPlanKey((prev) => ({
                 ...prev,
@@ -204,7 +221,7 @@ export const AgentPlanOverlay = memo(function AgentPlanOverlay({
               </div>
               <div className="mt-2 flex items-center gap-1.5 pl-5">
                 <Badge variant="outline" className="h-5 text-[10px] uppercase">
-                  {getStatusLabel(entry.status)}
+                  {t(getStatusKey(entry.status))}
                 </Badge>
                 <Badge
                   variant="outline"
@@ -213,7 +230,7 @@ export const AgentPlanOverlay = memo(function AgentPlanOverlay({
                     getPriorityClassName(entry.priority)
                   )}
                 >
-                  {getPriorityLabel(entry.priority)}
+                  {t(getPriorityKey(entry.priority))}
                 </Badge>
               </div>
             </div>

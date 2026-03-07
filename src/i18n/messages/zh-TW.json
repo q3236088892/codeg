@@ -1022,6 +1022,74 @@
         "add": "新增",
         "saving": "儲存中..."
       }
+    },
+    "chat": {
+      "chatInput": {
+        "connecting": "連線中...",
+        "agentResponding": "Agent 正在回應...",
+        "sendMessage": "傳送訊息..."
+      },
+      "messageInput": {
+        "askAnything": "請開始輸入...",
+        "removeAttachmentAria": "移除 {name}",
+        "attachFiles": "附加檔案",
+        "loadingSettings": "正在載入設定...",
+        "loadingMode": "正在載入模式...",
+        "cancel": "取消",
+        "send": "傳送"
+      },
+      "welcomeInputPanel": {
+        "agentsSettingsPath": "設定 > Agents",
+        "autoConnectFallback": "點擊前往 {path} 管理安裝。",
+        "autoConnectAppend": "{message}，點擊前往 {path} 管理安裝。",
+        "enableAgentFirstPlaceholder": "請先啟用至少一個 Agent 後開始會話...",
+        "askAnythingPlaceholder": "請開始輸入..."
+      },
+      "agentSelector": {
+        "noEnabledAgents": "暫無已啟用的 Agent",
+        "openAgentsSettings": "開啟 Agents 設定"
+      },
+      "liveMessageBlock": {
+        "assistantThinkingAria": "助手正在思考"
+      },
+      "agentPlanOverlay": {
+        "title": "Agent 計畫",
+        "collapsePlanAria": "摺疊計畫",
+        "collapsedSummary": "計畫 {completed}/{total}",
+        "status": {
+          "completed": "已完成",
+          "inProgress": "進行中",
+          "pending": "待處理",
+          "unknown": "未知"
+        },
+        "priority": {
+          "high": "高",
+          "medium": "中",
+          "low": "低",
+          "unknown": "未知"
+        }
+      },
+      "permissionDialog": {
+        "subtitle": "Agent 請求繼續目前輪次的權限。",
+        "kindFallbackTool": "工具",
+        "command": "命令",
+        "cwd": "工作目錄：{cwd}",
+        "filesSummary": "檔案：{count}",
+        "moreFiles": "+{count} 個更多檔案",
+        "plan": "計畫",
+        "targetMode": "目標模式：{mode}"
+      }
+    },
+    "diffPreview": {
+      "mode": {
+        "added": "新增",
+        "deleted": "刪除",
+        "renamed": "重新命名",
+        "modified": "修改"
+      },
+      "hunkLabel": "區塊 {index}",
+      "loadingHunk": "正在載入區塊...",
+      "noDiffData": "無差異資料"
     }
   }
 }

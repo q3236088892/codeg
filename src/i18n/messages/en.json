@@ -1022,6 +1022,74 @@
         "add": "Add",
         "saving": "Saving..."
       }
+    },
+    "chat": {
+      "chatInput": {
+        "connecting": "Connecting...",
+        "agentResponding": "Agent is responding...",
+        "sendMessage": "Send a message..."
+      },
+      "messageInput": {
+        "askAnything": "Ask anything...",
+        "removeAttachmentAria": "Remove {name}",
+        "attachFiles": "Attach files",
+        "loadingSettings": "Loading settings...",
+        "loadingMode": "Loading mode...",
+        "cancel": "Cancel",
+        "send": "Send"
+      },
+      "welcomeInputPanel": {
+        "agentsSettingsPath": "Settings > Agents",
+        "autoConnectFallback": "Click to open {path} and manage installation.",
+        "autoConnectAppend": "{message}. Click to open {path} and manage installation.",
+        "enableAgentFirstPlaceholder": "Enable at least one agent before starting a session...",
+        "askAnythingPlaceholder": "Ask anything..."
+      },
+      "agentSelector": {
+        "noEnabledAgents": "No enabled agents",
+        "openAgentsSettings": "Open Agents settings"
+      },
+      "liveMessageBlock": {
+        "assistantThinkingAria": "Assistant is thinking"
+      },
+      "agentPlanOverlay": {
+        "title": "Agent Plan",
+        "collapsePlanAria": "Collapse plan",
+        "collapsedSummary": "Plan {completed}/{total}",
+        "status": {
+          "completed": "Completed",
+          "inProgress": "In Progress",
+          "pending": "Pending",
+          "unknown": "Unknown"
+        },
+        "priority": {
+          "high": "High",
+          "medium": "Medium",
+          "low": "Low",
+          "unknown": "Unknown"
+        }
+      },
+      "permissionDialog": {
+        "subtitle": "Agent requests permission to continue this turn.",
+        "kindFallbackTool": "tool",
+        "command": "Command",
+        "cwd": "CWD: {cwd}",
+        "filesSummary": "Files: {count}",
+        "moreFiles": "+{count} more files",
+        "plan": "Plan",
+        "targetMode": "Target mode: {mode}"
+      }
+    },
+    "diffPreview": {
+      "mode": {
+        "added": "Added",
+        "deleted": "Deleted",
+        "renamed": "Renamed",
+        "modified": "Modified"
+      },
+      "hunkLabel": "Hunk {index}",
+      "loadingHunk": "Loading hunk...",
+      "noDiffData": "No diff data"
     }
   }
 }

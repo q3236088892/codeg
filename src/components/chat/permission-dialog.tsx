@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import { useTranslations } from "next-intl"
 import {
   ShieldAlert,
   Terminal,
@@ -19,15 +20,16 @@ interface PermissionDialogProps {
   onRespond: (requestId: string, optionId: string) => void
 }
 
-function formatKindLabel(kind: string): string {
+function formatKindLabel(kind: string, fallbackLabel: string): string {
   const normalized = kind.replace(/_/g, " ").trim()
-  return normalized.length > 0 ? normalized : "tool"
+  return normalized.length > 0 ? normalized : fallbackLabel
 }
 
 export function PermissionDialog({
   permission,
   onRespond,
 }: PermissionDialogProps) {
+  const t = useTranslations("Folder.chat.permissionDialog")
   const parsed = useMemo(
     () => parsePermissionToolCall(permission?.tool_call),
     [permission?.tool_call]
@@ -51,12 +53,10 @@ export function PermissionDialog({
             <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500" />
             <span className="truncate">{parsed.title}</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Agent requests permission to continue this turn.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
         </div>
         <Badge variant="outline" className="shrink-0 text-[10px]">
-          {formatKindLabel(parsed.normalizedKind)}
+          {formatKindLabel(parsed.normalizedKind, t("kindFallbackTool"))}
         </Badge>
       </div>
 
@@ -65,12 +65,12 @@ export function PermissionDialog({
           <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-2">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Terminal className="h-3.5 w-3.5" />
-              <span>Command</span>
+              <span>{t("command")}</span>
             </div>
             <CodeBlock code={parsed.command} language="bash" />
             {parsed.cwd && (
               <div className="break-all text-xs text-muted-foreground">
-                CWD: {parsed.cwd}
+                {t("cwd", { cwd: parsed.cwd })}
               </div>
             )}
           </div>
@@ -80,7 +80,9 @@ export function PermissionDialog({
           <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-2">
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <FilePenLine className="h-3.5 w-3.5" />
-              <span>Files: {parsed.fileChanges.length}</span>
+              <span>
+                {t("filesSummary", { count: parsed.fileChanges.length })}
+              </span>
               {(parsed.additions > 0 || parsed.deletions > 0) && (
                 <span>
                   +{parsed.additions} / -{parsed.deletions}
@@ -98,7 +100,7 @@ export function PermissionDialog({
               ))}
               {parsed.fileChanges.length > 8 && (
                 <div className="text-xs text-muted-foreground">
-                  +{parsed.fileChanges.length - 8} more files
+                  {t("moreFiles", { count: parsed.fileChanges.length - 8 })}
                 </div>
               )}
             </div>
@@ -112,7 +114,7 @@ export function PermissionDialog({
           <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-2">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <ListTodo className="h-3.5 w-3.5" />
-              <span>Plan</span>
+              <span>{t("plan")}</span>
             </div>
             {parsed.planExplanation && (
               <p className="text-xs text-foreground/90">
@@ -140,7 +142,7 @@ export function PermissionDialog({
           <div className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs">
             <div className="flex items-center gap-1 text-muted-foreground">
               <Compass className="h-3.5 w-3.5" />
-              <span>Target mode: {parsed.modeTarget}</span>
+              <span>{t("targetMode", { mode: parsed.modeTarget })}</span>
             </div>
           </div>
         )}

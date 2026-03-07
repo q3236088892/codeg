@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import { MessageInput } from "@/components/chat/message-input"
 import type { AgentType, PromptDraft, SessionStats } from "@/lib/types"
 import { useFolderContext } from "@/contexts/folder-context"
@@ -65,18 +66,18 @@ function isExpectedAutoLinkError(error: unknown): boolean {
   return (error as { alerted?: unknown }).alerted === true
 }
 
-function buildInlineAutoConnectErrorMessage(raw: string): string {
-  const normalized = raw.trim().replace(/[。.!?，,；;：:]+$/u, "")
-  if (!normalized) return "点击前往设置 > Agents 管理安装。"
-  const hasSdkNotInstalled = /SDK\s*尚未安装$/u.test(normalized)
-  const message =
-    !hasSdkNotInstalled && normalized.endsWith("尚未安装")
-      ? normalized.replace(/尚未安装$/u, "SDK 尚未安装")
-      : normalized
-  if (message.includes("设置 > Agents 管理安装")) {
-    return `${message}。`
+function buildInlineAutoConnectErrorMessage(
+  raw: string,
+  options: {
+    fallback: string
+    append: (message: string) => string
+    alreadyContainsPath: (message: string) => boolean
   }
-  return `${message}，点击前往设置 > Agents 管理安装。`
+): string {
+  const normalized = raw.trim().replace(/[。.!?，,；;：:]+$/u, "")
+  if (!normalized) return options.fallback
+  if (options.alreadyContainsPath(normalized)) return normalized
+  return options.append(normalized)
 }
 
 export function WelcomeInputPanel({
@@ -85,6 +86,7 @@ export function WelcomeInputPanel({
   tabId,
   isActive = true,
 }: WelcomeInputPanelProps) {
+  const t = useTranslations("Folder.chat.welcomeInputPanel")
   const fallbackContextId = useMemo(() => crypto.randomUUID(), [])
   const contextKey = tabId ?? `new-${fallbackContextId}`
 
@@ -569,6 +571,23 @@ export function WelcomeInputPanel({
     })
   }, [selectedAgent])
 
+  const buildAutoConnectErrorMessage = useCallback(
+    (raw: string) =>
+      buildInlineAutoConnectErrorMessage(raw, {
+        fallback: t("autoConnectFallback"),
+        append: (message) =>
+          t("autoConnectAppend", {
+            message,
+            path: t("agentsSettingsPath"),
+          }),
+        alreadyContainsPath: (message) =>
+          [t("agentsSettingsPath"), "Settings > Agents"].some((path) =>
+            message.includes(path)
+          ),
+      }),
+    [t]
+  )
+
   // Track live message visibility across turn completion.
   // Hooks must be called before any conditional returns.
   const prevConnStatusForLiveRef = useRef(connStatus)
@@ -617,7 +636,7 @@ export function WelcomeInputPanel({
               className="w-full cursor-pointer rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center text-xs text-destructive transition-colors hover:bg-destructive/10"
             >
               {(() => {
-                const inlineMessage = buildInlineAutoConnectErrorMessage(
+                const inlineMessage = buildAutoConnectErrorMessage(
                   autoConnectError ?? agentConnectError ?? ""
                 )
                 return (
@@ -638,8 +657,8 @@ export function WelcomeInputPanel({
             defaultPath={workingDir}
             placeholder={
               agentsLoaded && usableAgentCount === 0
-                ? "请先启用至少一个 Agent 后开始会话..."
-                : "Ask anything..."
+                ? t("enableAgentFirstPlaceholder")
+                : t("askAnythingPlaceholder")
             }
             autoFocus
             attachmentTabId={tabId ?? null}

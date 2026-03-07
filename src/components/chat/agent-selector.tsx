@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import { acpListAgents } from "@/lib/tauri"
 import type { AgentType, AcpAgentInfo } from "@/lib/types"
 import { AGENT_LABELS } from "@/lib/types"
@@ -22,6 +23,7 @@ export function AgentSelector({
   onOpenAgentsSettings,
   disabled = false,
 }: AgentSelectorProps) {
+  const t = useTranslations("Folder.chat.agentSelector")
   const [agents, setAgents] = useState<AcpAgentInfo[]>([])
   const [selected, setSelected] = useState<AgentType | null>(
     defaultAgentType ?? null
@@ -80,14 +82,14 @@ export function AgentSelector({
   if (agents.length === 0) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
-        <div>暂无已启用的 Agent</div>
+        <div>{t("noEnabledAgents")}</div>
         {onOpenAgentsSettings ? (
           <button
             type="button"
             onClick={onOpenAgentsSettings}
             className="mt-2 inline-flex items-center rounded-md border px-2 py-1 text-xs text-foreground transition-colors hover:bg-accent cursor-pointer"
           >
-            打开 Agents 设置
+            {t("openAgentsSettings")}
           </button>
         ) : null}
       </div>
