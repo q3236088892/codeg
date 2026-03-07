@@ -1079,7 +1079,9 @@
         "preflightCheckFailedDefault": "预检查未通过，请检查 Agent 配置。",
         "preflightFailedTitle": "{agent} 预检查失败",
         "autoLinkPreflightFailed": "自动链接预检查失败：{message}",
-        "connectFailedTitle": "{agent} 连接失败"
+        "connectFailedTitle": "{agent} 连接失败",
+        "toolFallbackTitle": "工具",
+        "eventErrorTitle": "Agent 错误"
       },
       "connectionLifecycle": {
         "tasks": {
@@ -1091,6 +1093,11 @@
         "errors": {
           "connectionFailed": "连接失败"
         }
+      },
+      "shared": {
+        "attachedResources": "附加资源",
+        "toolCallFailed": "工具调用失败",
+        "planUpdated": "计划已更新"
       },
       "messageThread": {
         "emptyTitle": "暂无消息",
@@ -1222,6 +1229,38 @@
         "subjectLabel": "主题",
         "taskLabel": "任务",
         "nameLabel": "名称：",
+        "field": {
+          "file": "文件",
+          "notebook": "Notebook",
+          "command": "命令",
+          "old": "旧内容",
+          "new": "新内容",
+          "pattern": "模式",
+          "path": "路径",
+          "query": "查询",
+          "url": "URL",
+          "description": "描述",
+          "content": "内容",
+          "source": "源内容",
+          "prompt": "提示词",
+          "subject": "主题",
+          "taskId": "任务 ID",
+          "status": "状态",
+          "skill": "Skill",
+          "args": "参数",
+          "offset": "偏移",
+          "limit": "限制",
+          "glob": "Glob",
+          "type": "类型",
+          "output": "输出",
+          "replaceAll": "全部替换",
+          "language": "语言",
+          "timeout": "超时",
+          "background": "后台",
+          "agentType": "Agent 类型",
+          "library": "库",
+          "libraryId": "库 ID"
+        },
         "title": {
           "edit": "编辑",
           "command": "命令",

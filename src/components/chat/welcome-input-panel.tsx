@@ -87,6 +87,8 @@ export function WelcomeInputPanel({
   isActive = true,
 }: WelcomeInputPanelProps) {
   const t = useTranslations("Folder.chat.welcomeInputPanel")
+  const tabT = useTranslations("Folder.tabContext")
+  const sharedT = useTranslations("Folder.chat.shared")
   const fallbackContextId = useMemo(() => crypto.randomUUID(), [])
   const contextKey = tabId ?? `new-${fallbackContextId}`
 
@@ -159,7 +161,10 @@ export function WelcomeInputPanel({
           const detail = await getFolderConversation(conversationId)
           if (refreshSeq !== statsRefreshSeqRef.current) return
 
-          const messages = adaptMessageTurns(detail.turns)
+          const messages = adaptMessageTurns(detail.turns, {
+            attachedResources: sharedT("attachedResources"),
+            toolCallFailed: sharedT("toolCallFailed"),
+          })
           const stats = detail.session_stats ?? null
           latestMessages = messages
           latestStats = stats
@@ -196,7 +201,7 @@ export function WelcomeInputPanel({
         applySessionStats(latestStats)
       }
     },
-    [applySessionStats, hasAssistantUsage, hasTokenStats]
+    [applySessionStats, hasAssistantUsage, hasTokenStats, sharedT]
   )
 
   useEffect(() => {
@@ -354,6 +359,8 @@ export function WelcomeInputPanel({
       if (conn.liveMessage && conn.liveMessage.content.length > 0) {
         const adapted = adaptLiveMessageFromAcp(conn.liveMessage, {
           isLiveStreaming: false,
+          toolCallFailedText: sharedT("toolCallFailed"),
+          planUpdatedText: sharedT("planUpdated"),
         })
 
         setHistory((h) => [...h, adapted])
@@ -376,7 +383,7 @@ export function WelcomeInputPanel({
       )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- conn.liveMessage, lifecycleSend intentionally omitted: effect only fires on status transitions
-  }, [connStatus, refreshConversations, refreshConversationFromDb])
+  }, [connStatus, refreshConversations, refreshConversationFromDb, sharedT])
 
   // When connection becomes "connected" and we have a pending prompt, send it
   useEffect(() => {
@@ -394,7 +401,7 @@ export function WelcomeInputPanel({
     const tid = tabIdRef.current
     const convId = dbConvIdRef.current
     const agent = selectedAgentRef.current
-    const title = convTitleRef.current || "Untitled"
+    const title = convTitleRef.current || tabT("untitledConversation")
     const canonicalContextKey = `conv-${agent}-${convId}`
 
     // Keep in-flight stream/state attached when this new-conversation view
@@ -410,6 +417,7 @@ export function WelcomeInputPanel({
     refreshConversations,
     migrateContextKey,
     contextKey,
+    tabT,
   ])
 
   // Update conversation status on disconnect/error + promote tab
@@ -466,11 +474,17 @@ export function WelcomeInputPanel({
   // Welcome phase: submit first message.
   const handleWelcomeSend = useCallback(
     (draft: PromptDraft, selectedModeId?: string | null) => {
-      const displayText = getPromptDraftDisplayText(draft)
+      const displayText = getPromptDraftDisplayText(
+        draft,
+        sharedT("attachedResources")
+      )
       const userMsg: AdaptedMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content: buildUserMessageTextPartsFromDraft(draft),
+        content: buildUserMessageTextPartsFromDraft(
+          draft,
+          sharedT("attachedResources")
+        ),
         userResources: extractUserResourcesFromDraft(draft),
         timestamp: new Date().toISOString(),
       }
@@ -536,6 +550,7 @@ export function WelcomeInputPanel({
       trySaveExternalId,
       applySessionStats,
       newConversationDraftStorageKey,
+      sharedT,
     ]
   )
 
@@ -545,7 +560,10 @@ export function WelcomeInputPanel({
       const userMsg: AdaptedMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content: buildUserMessageTextPartsFromDraft(draft),
+        content: buildUserMessageTextPartsFromDraft(
+          draft,
+          sharedT("attachedResources")
+        ),
         userResources: extractUserResourcesFromDraft(draft),
         timestamp: new Date().toISOString(),
       }
@@ -562,7 +580,7 @@ export function WelcomeInputPanel({
         statusUpdatedRef.current = false
       }
     },
-    [lifecycleSend, refreshConversations]
+    [lifecycleSend, refreshConversations, sharedT]
   )
 
   const handleOpenAgentsSettings = useCallback(() => {

@@ -10,15 +10,24 @@ function isResourceLinkBlock(
   return block.type === "resource_link"
 }
 
-export function getPromptDraftDisplayText(draft: PromptDraft): string {
+export function getPromptDraftDisplayText(
+  draft: PromptDraft,
+  attachedResourcesFallback: string
+): string {
   const trimmed = draft.displayText.trim()
-  return trimmed || "Attached resources"
+  return trimmed || attachedResourcesFallback
 }
 
 export function buildUserMessageTextPartsFromDraft(
-  draft: PromptDraft
+  draft: PromptDraft,
+  attachedResourcesFallback: string
 ): AdaptedContentPart[] {
-  return [{ type: "text", text: getPromptDraftDisplayText(draft) }]
+  return [
+    {
+      type: "text",
+      text: getPromptDraftDisplayText(draft, attachedResourcesFallback),
+    },
+  ]
 }
 
 export function extractUserResourcesFromDraft(

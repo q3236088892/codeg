@@ -33,6 +33,8 @@ function stripClonePrefix(message: string): string {
 function mapCommonCodeToKey(code: string): WelcomeErrorKey {
   switch (code) {
     case "invalid_input":
+    case "configuration_missing":
+    case "configuration_invalid":
       return "errors.invalidInput"
     case "not_found":
       return "errors.notFound"

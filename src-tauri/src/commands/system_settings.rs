@@ -34,13 +34,13 @@ fn normalize_proxy_settings(
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
             AppCommandError::new(
-                AppErrorCode::InvalidInput,
+                AppErrorCode::ConfigurationMissing,
                 "Proxy URL is required when proxy is enabled",
             )
         })?;
 
     reqwest::Proxy::all(proxy_url).map_err(|e| {
-        AppCommandError::new(AppErrorCode::InvalidInput, "Invalid proxy URL")
+        AppCommandError::new(AppErrorCode::ConfigurationInvalid, "Invalid proxy URL")
             .with_detail(e.to_string())
     })?;
 
@@ -63,7 +63,7 @@ pub(crate) async fn load_system_proxy_settings(
 
     let parsed = serde_json::from_str::<SystemProxySettings>(&raw).map_err(|e| {
         AppCommandError::new(
-            AppErrorCode::InvalidInput,
+            AppErrorCode::ConfigurationInvalid,
             "Failed to parse stored proxy settings",
         )
         .with_detail(e.to_string())
@@ -84,7 +84,7 @@ pub(crate) async fn load_system_language_settings(
 
     serde_json::from_str::<SystemLanguageSettings>(&raw).map_err(|e| {
         AppCommandError::new(
-            AppErrorCode::InvalidInput,
+            AppErrorCode::ConfigurationInvalid,
             "Failed to parse stored language settings",
         )
         .with_detail(e.to_string())
@@ -116,13 +116,7 @@ pub async fn update_system_proxy_settings(
         .await
         .map_err(AppCommandError::from)?;
 
-    proxy::apply_system_proxy_settings(&normalized).map_err(|e| {
-        AppCommandError::new(
-            AppErrorCode::ExternalCommandFailed,
-            "Failed to apply system proxy settings",
-        )
-        .with_detail(e)
-    })?;
+    proxy::apply_system_proxy_settings(&normalized)?;
     Ok(normalized)
 }
 

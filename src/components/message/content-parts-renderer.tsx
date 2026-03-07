@@ -1660,6 +1660,7 @@ const CODE_FIELDS = new Set([
 const HIDDEN_FIELDS = new Set(["dangerouslyDisableSandbox"])
 
 function GenericToolInput({ input }: { input: string }) {
+  const t = useTranslations("Folder.chat.contentParts")
   const parsed = tryParseJson(input)
 
   if (!parsed) {
@@ -1677,6 +1678,9 @@ function GenericToolInput({ input }: { input: string }) {
   return (
     <div className="space-y-3">
       {entries.map(([key, value]) => {
+        const labelKey = fieldLabelKey(key)
+        const label = labelKey ? t(labelKey) : key
+
         if (CODE_FIELDS.has(key) && typeof value === "string") {
           const lang =
             key === "command"
@@ -1685,7 +1689,7 @@ function GenericToolInput({ input }: { input: string }) {
                 ? ("log" as const)
                 : ("log" as const)
           return (
-            <FieldBlock key={key} label={fieldLabel(key)}>
+            <FieldBlock key={key} label={label}>
               <CodeBlock code={value} language={lang} />
             </FieldBlock>
           )
@@ -1694,29 +1698,23 @@ function GenericToolInput({ input }: { input: string }) {
         if (typeof value === "string") {
           if (value.length > 200) {
             return (
-              <FieldBlock key={key} label={fieldLabel(key)}>
+              <FieldBlock key={key} label={label}>
                 <pre className="whitespace-pre-wrap break-all rounded-md bg-muted/50 p-3 text-xs">
                   {value}
                 </pre>
               </FieldBlock>
             )
           }
-          return <FieldInline key={key} label={fieldLabel(key)} value={value} />
+          return <FieldInline key={key} label={label} value={value} />
         }
 
         if (typeof value === "number" || typeof value === "boolean") {
-          return (
-            <FieldInline
-              key={key}
-              label={fieldLabel(key)}
-              value={String(value)}
-            />
-          )
+          return <FieldInline key={key} label={label} value={String(value)} />
         }
 
         if (value !== null && value !== undefined) {
           return (
-            <FieldBlock key={key} label={fieldLabel(key)}>
+            <FieldBlock key={key} label={label}>
               <CodeBlock
                 code={JSON.stringify(value, null, 2)}
                 language="json"
@@ -1836,41 +1834,45 @@ function FieldBlock({
   )
 }
 
-function fieldLabel(key: string): string {
-  const map: Record<string, string> = {
-    file_path: "File",
-    notebook_path: "Notebook",
-    command: "Command",
-    cmd: "Command",
-    old_string: "Old",
-    new_string: "New",
-    pattern: "Pattern",
-    path: "Path",
-    query: "Query",
-    url: "URL",
-    description: "Description",
-    content: "Content",
-    new_source: "Source",
-    prompt: "Prompt",
-    subject: "Subject",
-    taskId: "Task ID",
-    status: "Status",
-    skill: "Skill",
-    args: "Args",
-    offset: "Offset",
-    limit: "Limit",
-    glob: "Glob",
-    type: "Type",
-    output_mode: "Output",
-    replace_all: "Replace All",
-    language: "Language",
-    timeout: "Timeout",
-    run_in_background: "Background",
-    subagent_type: "Agent Type",
-    libraryName: "Library",
-    libraryId: "Library ID",
-  }
-  return map[key] ?? key
+const FIELD_LABEL_KEYS = {
+  file_path: "field.file",
+  notebook_path: "field.notebook",
+  command: "field.command",
+  cmd: "field.command",
+  old_string: "field.old",
+  new_string: "field.new",
+  pattern: "field.pattern",
+  path: "field.path",
+  query: "field.query",
+  url: "field.url",
+  description: "field.description",
+  content: "field.content",
+  new_source: "field.source",
+  prompt: "field.prompt",
+  subject: "field.subject",
+  taskId: "field.taskId",
+  status: "field.status",
+  skill: "field.skill",
+  args: "field.args",
+  offset: "field.offset",
+  limit: "field.limit",
+  glob: "field.glob",
+  type: "field.type",
+  output_mode: "field.output",
+  replace_all: "field.replaceAll",
+  language: "field.language",
+  timeout: "field.timeout",
+  run_in_background: "field.background",
+  subagent_type: "field.agentType",
+  libraryName: "field.library",
+  libraryId: "field.libraryId",
+} as const
+
+function fieldLabelKey(
+  key: string
+): (typeof FIELD_LABEL_KEYS)[keyof typeof FIELD_LABEL_KEYS] | null {
+  const translationKey = FIELD_LABEL_KEYS[key as keyof typeof FIELD_LABEL_KEYS]
+  return translationKey ?? null
 }
 
 function commandOutputFromJsonString(output: string): string | null {

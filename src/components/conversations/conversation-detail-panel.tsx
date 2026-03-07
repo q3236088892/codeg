@@ -43,6 +43,7 @@ const ExistingConversationView = memo(function ExistingConversationView({
   reloadSignal,
 }: ExistingConversationViewProps) {
   const t = useTranslations("Folder.conversation")
+  const sharedT = useTranslations("Folder.chat.shared")
   const { refreshConversations, folder } = useFolderContext()
   const contextKey = `conv-${agentType}-${conversationId}`
 
@@ -114,7 +115,10 @@ const ExistingConversationView = memo(function ExistingConversationView({
         {
           id: `pending-${Date.now()}`,
           role: "user",
-          content: buildUserMessageTextPartsFromDraft(draft),
+          content: buildUserMessageTextPartsFromDraft(
+            draft,
+            sharedT("attachedResources")
+          ),
           userResources: extractUserResourcesFromDraft(draft),
           timestamp: new Date().toISOString(),
         },
@@ -125,7 +129,7 @@ const ExistingConversationView = memo(function ExistingConversationView({
       statusUpdatedRef.current = false
       handleSend(draft, selectedModeId)
     },
-    [conversationId, handleSend, refreshConversations]
+    [conversationId, handleSend, refreshConversations, sharedT]
   )
 
   // Update status on turn complete

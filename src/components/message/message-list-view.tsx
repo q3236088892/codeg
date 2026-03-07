@@ -169,6 +169,7 @@ export function MessageListView({
   isActive = true,
 }: MessageListViewProps) {
   const t = useTranslations("Folder.chat.messageList")
+  const sharedT = useTranslations("Folder.chat.shared")
   const { detail, loading, error, refetch } = useDbMessageDetail(conversationId)
   const turnCount = detail?.turns.length ?? 0
 
@@ -213,8 +214,14 @@ export function MessageListView({
   const shouldUseSmoothResize = !(isActive && !loading && detail)
 
   const messages = useMemo(
-    () => (detail ? adaptMessageTurns(detail.turns) : []),
-    [detail]
+    () =>
+      detail
+        ? adaptMessageTurns(detail.turns, {
+            attachedResources: sharedT("attachedResources"),
+            toolCallFailed: sharedT("toolCallFailed"),
+          })
+        : [],
+    [detail, sharedT]
   )
 
   const groups = useMemo(() => groupAdaptedMessages(messages), [messages])
@@ -234,15 +241,17 @@ export function MessageListView({
   )
   const resolvedGroups = useMemo(
     () =>
-      groups.map((group) => resolveMessageGroup(group, t("attachedResources"))),
-    [groups, t]
+      groups.map((group) =>
+        resolveMessageGroup(group, sharedT("attachedResources"))
+      ),
+    [groups, sharedT]
   )
   const resolvedPendingGroups = useMemo(
     () =>
       pendingGroups.map((group) =>
-        resolveMessageGroup(group, t("attachedResources"))
+        resolveMessageGroup(group, sharedT("attachedResources"))
       ),
-    [pendingGroups, t]
+    [pendingGroups, sharedT]
   )
 
   const showLiveMessage = Boolean(

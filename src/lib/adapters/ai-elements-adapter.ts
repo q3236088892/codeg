@@ -60,6 +60,12 @@ export interface AdaptedMessage {
   model?: string | null
 }
 
+export interface AdapterMessageText {
+  attachedResources: string
+  toolCallFailed: string
+  planUpdated: string
+}
+
 type InlineToolSegment =
   | { kind: "text"; value: string }
   | { kind: "tool_call" | "tool_result"; value: string }
@@ -271,7 +277,8 @@ function parseInlineToolResultPayload(payload: string): {
 function expandInlineToolText(
   text: string,
   messageId: string,
-  blockIndex: number
+  blockIndex: number,
+  toolCallFailedText: string
 ): AdaptedContentPart[] | null {
   const segments = splitInlineToolSegments(text)
   if (!segments) return null
@@ -320,7 +327,7 @@ function expandInlineToolText(
         output = parsedResult.output
         if (parsedResult.isError) {
           state = "output-error"
-          errorText = output ?? "Tool call failed"
+          errorText = output ?? toolCallFailedText
         }
         index = lookahead
       }
@@ -345,7 +352,7 @@ function expandInlineToolText(
       toolCallId,
       output: parsedResult.output,
       errorText: parsedResult.isError
-        ? (parsedResult.output ?? "Tool call failed")
+        ? (parsedResult.output ?? toolCallFailedText)
         : undefined,
       state: parsedResult.isError ? "output-error" : "output-available",
     })
@@ -440,7 +447,10 @@ export function extractUserResourcesFromText(text: string): {
   }
 }
 
-function splitUserTextAndResources(parts: AdaptedContentPart[]): {
+function splitUserTextAndResources(
+  parts: AdaptedContentPart[],
+  attachedResourcesText: string
+): {
   parts: AdaptedContentPart[]
   resources: UserResourceDisplay[]
 } {
@@ -464,7 +474,7 @@ function splitUserTextAndResources(parts: AdaptedContentPart[]): {
   }
 
   if (nextParts.length === 0 && resources.length > 0) {
-    nextParts.push({ type: "text", text: "Attached resources" })
+    nextParts.push({ type: "text", text: attachedResourcesText })
   }
 
   return { parts: nextParts, resources }
@@ -545,7 +555,10 @@ function buildToolResultMap(
  * Transform a MessageTurn (from backend) to AdaptedMessage format.
  * Same correlation logic as adaptUnifiedMessage but operates on turn.blocks.
  */
-export function adaptMessageTurn(turn: MessageTurn): AdaptedMessage {
+export function adaptMessageTurn(
+  turn: MessageTurn,
+  text: Pick<AdapterMessageText, "attachedResources" | "toolCallFailed">
+): AdaptedMessage {
   const adaptedContent: AdaptedContentPart[] = []
   const resultMap = buildToolResultMap(turn.blocks)
   const matchedResultIds = new Set<string>()
@@ -557,7 +570,12 @@ export function adaptMessageTurn(turn: MessageTurn): AdaptedMessage {
     const block = turn.blocks[index]
 
     if (turn.role === "assistant" && block.type === "text") {
-      const expandedParts = expandInlineToolText(block.text, turn.id, index)
+      const expandedParts = expandInlineToolText(
+        block.text,
+        turn.id,
+        index,
+        text.toolCallFailed
+      )
       if (expandedParts) {
         adaptedContent.push(...expandedParts)
         continue
@@ -641,7 +659,7 @@ export function adaptMessageTurn(turn: MessageTurn): AdaptedMessage {
 
   const userSplit =
     turn.role === "user"
-      ? splitUserTextAndResources(adaptedContent)
+      ? splitUserTextAndResources(adaptedContent, text.attachedResources)
       : { parts: adaptedContent, resources: [] as UserResourceDisplay[] }
 
   return {
@@ -661,8 +679,11 @@ export function adaptMessageTurn(turn: MessageTurn): AdaptedMessage {
  * Transform all turns in a conversation to AdaptedMessage[].
  * Internally computes completedToolIds so callers don't need to.
  */
-export function adaptMessageTurns(turns: MessageTurn[]): AdaptedMessage[] {
-  return turns.map((turn) => adaptMessageTurn(turn))
+export function adaptMessageTurns(
+  turns: MessageTurn[],
+  text: Pick<AdapterMessageText, "attachedResources" | "toolCallFailed">
+): AdaptedMessage[] {
+  return turns.map((turn) => adaptMessageTurn(turn, text))
 }
 
 /**
@@ -942,19 +963,22 @@ function selectLiveToolOutput(params: {
 }
 
 function formatPlanEntries(
-  entries: Array<{ content: string; priority: string; status: string }>
+  entries: Array<{ content: string; priority: string; status: string }>,
+  planUpdatedText: string
 ): string {
   if (entries.length === 0) {
-    return "Plan updated"
+    return planUpdatedText
   }
   const lines = entries.map(
     (entry) => `- [${entry.status}] ${entry.content} (${entry.priority})`
   )
-  return `Plan updated:\n${lines.join("\n")}`
+  return `${planUpdatedText}:\n${lines.join("\n")}`
 }
 
 interface AdaptLiveMessageOptions {
   isLiveStreaming?: boolean
+  toolCallFailedText: string
+  planUpdatedText: string
 }
 
 function isReasoningBlock(block: LiveMessage["content"][number]): boolean {
@@ -976,7 +1000,7 @@ function findLastReasoningIndex(message: LiveMessage): number {
  */
 export function adaptLiveMessageFromAcp(
   message: LiveMessage,
-  options: AdaptLiveMessageOptions = {}
+  options: AdaptLiveMessageOptions
 ): AdaptedMessage {
   const isLiveStreaming = options.isLiveStreaming ?? true
   const adaptedContent: AdaptedContentPart[] = []
@@ -1034,7 +1058,7 @@ export function adaptLiveMessageFromAcp(
           output,
           errorText:
             state === "output-error"
-              ? selectedOutput || "Tool call failed"
+              ? selectedOutput || options.toolCallFailedText
               : undefined,
         })
         break
@@ -1043,7 +1067,7 @@ export function adaptLiveMessageFromAcp(
       case "plan":
         adaptedContent.push({
           type: "reasoning",
-          content: formatPlanEntries(block.entries),
+          content: formatPlanEntries(block.entries, options.planUpdatedText),
           isStreaming: index === lastStreamingReasoningIndex,
         })
         break

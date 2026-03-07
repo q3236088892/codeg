@@ -15,8 +15,16 @@ export const LiveMessageBlock = memo(function LiveMessageBlock({
   message,
 }: LiveMessageBlockProps) {
   const t = useTranslations("Folder.chat.liveMessageBlock")
+  const sharedT = useTranslations("Folder.chat.shared")
   const hasContent = message.content.length > 0
-  const adapted = useMemo(() => adaptLiveMessageFromAcp(message), [message])
+  const adapted = useMemo(
+    () =>
+      adaptLiveMessageFromAcp(message, {
+        toolCallFailedText: sharedT("toolCallFailed"),
+        planUpdatedText: sharedT("planUpdated"),
+      }),
+    [message, sharedT]
+  )
 
   return (
     <Message from="assistant">

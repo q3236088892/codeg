@@ -1079,7 +1079,9 @@
         "preflightCheckFailedDefault": "Preflight checks failed. Check Agent settings.",
         "preflightFailedTitle": "{agent} preflight failed",
         "autoLinkPreflightFailed": "Auto-link preflight failed: {message}",
-        "connectFailedTitle": "{agent} connection failed"
+        "connectFailedTitle": "{agent} connection failed",
+        "toolFallbackTitle": "Tool",
+        "eventErrorTitle": "Agent Error"
       },
       "connectionLifecycle": {
         "tasks": {
@@ -1091,6 +1093,11 @@
         "errors": {
           "connectionFailed": "Connection failed"
         }
+      },
+      "shared": {
+        "attachedResources": "Attached resources",
+        "toolCallFailed": "Tool call failed",
+        "planUpdated": "Plan updated"
       },
       "messageThread": {
         "emptyTitle": "No messages yet",
@@ -1222,6 +1229,38 @@
         "subjectLabel": "Subject",
         "taskLabel": "Task",
         "nameLabel": "Name:",
+        "field": {
+          "file": "File",
+          "notebook": "Notebook",
+          "command": "Command",
+          "old": "Old",
+          "new": "New",
+          "pattern": "Pattern",
+          "path": "Path",
+          "query": "Query",
+          "url": "URL",
+          "description": "Description",
+          "content": "Content",
+          "source": "Source",
+          "prompt": "Prompt",
+          "subject": "Subject",
+          "taskId": "Task ID",
+          "status": "Status",
+          "skill": "Skill",
+          "args": "Args",
+          "offset": "Offset",
+          "limit": "Limit",
+          "glob": "Glob",
+          "type": "Type",
+          "output": "Output",
+          "replaceAll": "Replace All",
+          "language": "Language",
+          "timeout": "Timeout",
+          "background": "Background",
+          "agentType": "Agent Type",
+          "library": "Library",
+          "libraryId": "Library ID"
+        },
         "title": {
           "edit": "Edit",
           "command": "Command",

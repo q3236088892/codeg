@@ -23,6 +23,8 @@ export type AgentType =
 export type AppErrorCode =
   | "unknown"
   | "invalid_input"
+  | "configuration_missing"
+  | "configuration_invalid"
   | "not_found"
   | "already_exists"
   | "permission_denied"

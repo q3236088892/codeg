@@ -148,13 +148,18 @@ fn parse_count_from_output(stdout: &[u8]) -> Option<usize> {
     String::from_utf8_lossy(stdout).trim().parse::<usize>().ok()
 }
 
-async fn get_head_hash(path: &str) -> Result<Option<String>, String> {
+fn git_command_error(operation: &str, stderr: &[u8]) -> AppCommandError {
+    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
+    AppCommandError::external_command(format!("git {operation} failed"), stderr)
+}
+
+async fn get_head_hash(path: &str) -> Result<Option<String>, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
         return Ok(None);
@@ -167,17 +172,16 @@ async fn get_head_hash(path: &str) -> Result<Option<String>, String> {
     Ok(Some(head))
 }
 
-async fn count_files_in_commit(path: &str, commit: &str) -> Result<usize, String> {
+async fn count_files_in_commit(path: &str, commit: &str) -> Result<usize, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["show", "--name-only", "--pretty=format:", commit])
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git show failed: {}", stderr.trim()));
+        return Err(git_command_error("show", &output.stderr));
     }
 
     Ok(count_non_empty_lines(&String::from_utf8_lossy(
@@ -185,18 +189,21 @@ async fn count_files_in_commit(path: &str, commit: &str) -> Result<usize, String
     )))
 }
 
-async fn count_changed_files_between(path: &str, base: &str, head: &str) -> Result<usize, String> {
+async fn count_changed_files_between(
+    path: &str,
+    base: &str,
+    head: &str,
+) -> Result<usize, AppCommandError> {
     let range = format!("{}..{}", base, head);
     let output = crate::process::tokio_command("git")
         .args(["diff", "--name-only", &range])
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git diff failed: {}", stderr.trim()));
+        return Err(git_command_error("diff", &output.stderr));
     }
 
     Ok(count_non_empty_lines(&String::from_utf8_lossy(
@@ -337,8 +344,8 @@ pub async fn save_folder_opened_conversations(
 }
 
 #[tauri::command]
-pub async fn create_folder_directory(path: String) -> Result<(), String> {
-    std::fs::create_dir_all(&path).map_err(|e| e.to_string())
+pub async fn create_folder_directory(path: String) -> Result<(), AppCommandError> {
+    std::fs::create_dir_all(&path).map_err(AppCommandError::io)
 }
 
 #[tauri::command]
@@ -427,13 +434,13 @@ fn classify_git_clone_error(stderr: &str) -> AppCommandError {
 }
 
 #[tauri::command]
-pub async fn get_git_branch(path: String) -> Result<Option<String>, String> {
+pub async fn get_git_branch(path: String) -> Result<Option<String>, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
         return Ok(None);
@@ -447,23 +454,22 @@ pub async fn get_git_branch(path: String) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub async fn git_init(path: String) -> Result<(), String> {
+pub async fn git_init(path: String) -> Result<(), AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["init"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git init failed: {}", stderr.trim()));
+        return Err(git_command_error("init", &output.stderr));
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn git_pull(path: String) -> Result<GitPullResult, String> {
+pub async fn git_pull(path: String) -> Result<GitPullResult, AppCommandError> {
     let head_before = get_head_hash(&path).await?;
 
     let output = crate::process::tokio_command("git")
@@ -471,11 +477,10 @@ pub async fn git_pull(path: String) -> Result<GitPullResult, String> {
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git pull failed: {}", stderr.trim()));
+        return Err(git_command_error("pull", &output.stderr));
     }
 
     let head_after = get_head_hash(&path).await?;
@@ -491,23 +496,22 @@ pub async fn git_pull(path: String) -> Result<GitPullResult, String> {
 }
 
 #[tauri::command]
-pub async fn git_fetch(path: String) -> Result<String, String> {
+pub async fn git_fetch(path: String) -> Result<String, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["fetch", "--all"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git fetch failed: {}", stderr.trim()));
+        return Err(git_command_error("fetch --all", &output.stderr));
     }
     Ok(String::from_utf8_lossy(&output.stderr).trim().to_string())
 }
 
 #[tauri::command]
-pub async fn git_push(path: String) -> Result<GitPushResult, String> {
+pub async fn git_push(path: String) -> Result<GitPushResult, AppCommandError> {
     let pushed_commits = estimate_push_commit_count(&path).await;
 
     // Check if the current branch has an upstream configured
@@ -516,7 +520,7 @@ pub async fn git_push(path: String) -> Result<GitPushResult, String> {
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     let has_upstream = upstream_check.status.success();
 
@@ -527,7 +531,7 @@ pub async fn git_push(path: String) -> Result<GitPushResult, String> {
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(AppCommandError::io)?;
         let branch = String::from_utf8_lossy(&branch_output.stdout)
             .trim()
             .to_string();
@@ -537,19 +541,18 @@ pub async fn git_push(path: String) -> Result<GitPushResult, String> {
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(AppCommandError::io)?
     } else {
         crate::process::tokio_command("git")
             .args(["push"])
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(AppCommandError::io)?
     };
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git push failed: {}", stderr.trim()));
+        return Err(git_command_error("push", &output.stderr));
     }
 
     Ok(GitPushResult {
@@ -563,7 +566,7 @@ pub async fn git_new_branch(
     path: String,
     branch_name: String,
     start_point: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     let mut args = vec!["checkout".to_string(), "-b".to_string(), branch_name];
     if let Some(start_point) = start_point {
         let trimmed = start_point.trim();
@@ -577,11 +580,10 @@ pub async fn git_new_branch(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git checkout -b failed: {}", stderr.trim()));
+        return Err(git_command_error("checkout -b", &output.stderr));
     }
     Ok(())
 }
@@ -591,7 +593,7 @@ pub async fn git_worktree_add(
     path: String,
     branch_name: String,
     worktree_path: String,
-) -> Result<(), String> {
+) -> Result<(), AppCommandError> {
     // 校验分支是否已存在
     let check = crate::process::tokio_command("git")
         .args([
@@ -602,14 +604,22 @@ pub async fn git_worktree_add(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
     if check.status.success() {
-        return Err(format!("分支 '{}' 已存在", branch_name));
+        return Err(AppCommandError::new(
+            AppErrorCode::AlreadyExists,
+            "Branch already exists",
+        )
+        .with_detail(branch_name));
     }
 
     // 校验目录是否已存在
     if std::path::Path::new(&worktree_path).exists() {
-        return Err(format!("目录 '{}' 已存在", worktree_path));
+        return Err(AppCommandError::new(
+            AppErrorCode::AlreadyExists,
+            "Worktree directory already exists",
+        )
+        .with_detail(worktree_path));
     }
 
     // 执行 git worktree add -b <branch> <path>
@@ -618,43 +628,40 @@ pub async fn git_worktree_add(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git worktree add failed: {}", stderr.trim()));
+        return Err(git_command_error("worktree add", &output.stderr));
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn git_checkout(path: String, branch_name: String) -> Result<(), String> {
+pub async fn git_checkout(path: String, branch_name: String) -> Result<(), AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["checkout", &branch_name])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git checkout failed: {}", stderr.trim()));
+        return Err(git_command_error("checkout", &output.stderr));
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn git_list_branches(path: String) -> Result<Vec<String>, String> {
+pub async fn git_list_branches(path: String) -> Result<Vec<String>, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["branch", "--format=%(refname:short)"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git branch failed: {}", stderr.trim()));
+        return Err(git_command_error("branch", &output.stderr));
     }
 
     let branches = String::from_utf8_lossy(&output.stdout)
@@ -666,49 +673,46 @@ pub async fn git_list_branches(path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub async fn git_stash(path: String) -> Result<String, String> {
+pub async fn git_stash(path: String) -> Result<String, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["stash"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git stash failed: {}", stderr.trim()));
+        return Err(git_command_error("stash", &output.stderr));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 #[tauri::command]
-pub async fn git_stash_pop(path: String) -> Result<String, String> {
+pub async fn git_stash_pop(path: String) -> Result<String, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["stash", "pop"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git stash pop failed: {}", stderr.trim()));
+        return Err(git_command_error("stash pop", &output.stderr));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 #[tauri::command]
-pub async fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
+pub async fn git_status(path: String) -> Result<Vec<GitStatusEntry>, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["status", "--porcelain=v1", "-uall"])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git status failed: {}", stderr.trim()));
+        return Err(git_command_error("status", &output.stderr));
     }
 
     let entries = String::from_utf8_lossy(&output.stdout)
@@ -724,7 +728,7 @@ pub async fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
 }
 
 #[tauri::command]
-pub async fn git_is_tracked(path: String, file: String) -> Result<bool, String> {
+pub async fn git_is_tracked(path: String, file: String) -> Result<bool, AppCommandError> {
     let literal_file = to_git_literal_pathspec(&file);
     let output = crate::process::tokio_command("git")
         .args(["ls-files", "--error-unmatch", "--"])
@@ -732,13 +736,13 @@ pub async fn git_is_tracked(path: String, file: String) -> Result<bool, String> 
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     Ok(output.status.success())
 }
 
 #[tauri::command]
-pub async fn git_diff(path: String, file: Option<String>) -> Result<String, String> {
+pub async fn git_diff(path: String, file: Option<String>) -> Result<String, AppCommandError> {
     let literal_file = file.as_deref().map(to_git_literal_pathspec);
     let mut args = vec!["diff".to_string(), "HEAD".to_string()];
     if let Some(ref f) = literal_file {
@@ -751,7 +755,7 @@ pub async fn git_diff(path: String, file: Option<String>) -> Result<String, Stri
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
         // For new repos with no HEAD, fall back to diff --cached
@@ -765,7 +769,7 @@ pub async fn git_diff(path: String, file: Option<String>) -> Result<String, Stri
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(AppCommandError::io)?;
         return Ok(String::from_utf8_lossy(&fallback.stdout).to_string());
     }
 
@@ -777,10 +781,13 @@ pub async fn git_diff_with_branch(
     path: String,
     branch: String,
     file: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, AppCommandError> {
     let target_branch = branch.trim();
     if target_branch.is_empty() {
-        return Err("Branch name cannot be empty".to_string());
+        return Err(AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Branch name cannot be empty",
+        ));
     }
 
     let literal_file = file.as_deref().map(to_git_literal_pathspec);
@@ -799,15 +806,14 @@ pub async fn git_diff_with_branch(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "git diff {} failed: {}",
-            target_branch,
-            stderr.trim()
-        ));
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(
+            AppCommandError::external_command("git diff failed", stderr)
+                .with_detail(format!("branch={target_branch}")),
+        );
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -818,7 +824,7 @@ pub async fn git_show_diff(
     path: String,
     commit: String,
     file: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, AppCommandError> {
     let literal_file = file.as_deref().map(to_git_literal_pathspec);
     let mut args = vec![
         "show".to_string(),
@@ -836,11 +842,10 @@ pub async fn git_show_diff(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git show failed: {}", stderr.trim()));
+        return Err(git_command_error("show", &output.stderr));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -851,7 +856,7 @@ pub async fn git_show_file(
     path: String,
     file: String,
     ref_name: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, AppCommandError> {
     let git_ref = ref_name.unwrap_or_else(|| "HEAD".to_string());
     let file_spec = format!("{}:{}", git_ref, file);
 
@@ -860,7 +865,7 @@ pub async fn git_show_file(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
         // File doesn't exist at this ref (e.g. new/untracked file) — return empty
@@ -869,7 +874,11 @@ pub async fn git_show_file(
 
     let bytes = &output.stdout;
     if bytes.iter().take(2048).any(|b| *b == 0) {
-        return Err("Binary files are not supported".to_string());
+        return Err(AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "Binary files are not supported",
+        )
+        .with_detail(file_spec));
     }
 
     Ok(String::from_utf8_lossy(bytes).to_string())
@@ -882,7 +891,7 @@ pub async fn git_commit(
     path: String,
     message: String,
     files: Vec<String>,
-) -> Result<GitCommitResult, String> {
+) -> Result<GitCommitResult, AppCommandError> {
     // Stage selected files
     let mut add_args = vec!["add".to_string(), "--".to_string()];
     add_args.extend(files.iter().map(|file| to_git_literal_pathspec(file)));
@@ -892,11 +901,10 @@ pub async fn git_commit(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !add_output.status.success() {
-        let stderr = String::from_utf8_lossy(&add_output.stderr);
-        return Err(format!("git add failed: {}", stderr.trim()));
+        return Err(git_command_error("add", &add_output.stderr));
     }
 
     // Commit
@@ -905,11 +913,10 @@ pub async fn git_commit(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !commit_output.status.success() {
-        let stderr = String::from_utf8_lossy(&commit_output.stderr);
-        return Err(format!("git commit failed: {}", stderr.trim()));
+        return Err(git_command_error("commit", &commit_output.stderr));
     }
 
     let committed_files = count_files_in_commit(&path, "HEAD")
@@ -934,10 +941,13 @@ pub async fn git_commit(
 }
 
 #[tauri::command]
-pub async fn git_rollback_file(path: String, file: String) -> Result<(), String> {
+pub async fn git_rollback_file(path: String, file: String) -> Result<(), AppCommandError> {
     let target = file.trim();
     if target.is_empty() {
-        return Err("File path cannot be empty".to_string());
+        return Err(AppCommandError::new(
+            AppErrorCode::InvalidInput,
+            "File path cannot be empty",
+        ));
     }
 
     let literal_file = to_git_literal_pathspec(target);
@@ -953,7 +963,7 @@ pub async fn git_rollback_file(path: String, file: String) -> Result<(), String>
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if restore_output.status.success() {
         return Ok(());
@@ -969,7 +979,10 @@ pub async fn git_rollback_file(path: String, file: String) -> Result<(), String>
         && !restore_stderr_lower.contains("did you mean");
 
     if supports_restore {
-        return Err(format!("git restore failed: {}", restore_stderr));
+        return Err(AppCommandError::external_command(
+            "git restore failed",
+            restore_stderr,
+        ));
     }
 
     let _ = crate::process::tokio_command("git")
@@ -977,25 +990,24 @@ pub async fn git_rollback_file(path: String, file: String) -> Result<(), String>
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     let checkout_output = crate::process::tokio_command("git")
         .args(["checkout", "--", &literal_file])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !checkout_output.status.success() {
-        let checkout_stderr = String::from_utf8_lossy(&checkout_output.stderr);
-        return Err(format!("git checkout failed: {}", checkout_stderr.trim()));
+        return Err(git_command_error("checkout --", &checkout_output.stderr));
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn git_add_files(path: String, files: Vec<String>) -> Result<(), String> {
+pub async fn git_add_files(path: String, files: Vec<String>) -> Result<(), AppCommandError> {
     if files.is_empty() {
         return Ok(());
     }
@@ -1008,18 +1020,17 @@ pub async fn git_add_files(path: String, files: Vec<String>) -> Result<(), Strin
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git add failed: {}", stderr.trim()));
+        return Err(git_command_error("add", &output.stderr));
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn git_list_all_branches(path: String) -> Result<GitBranchList, String> {
+pub async fn git_list_all_branches(path: String) -> Result<GitBranchList, AppCommandError> {
     let local_fut = crate::process::tokio_command("git")
         .args(["branch", "--format=%(refname:short)"])
         .current_dir(&path)
@@ -1037,10 +1048,9 @@ pub async fn git_list_all_branches(path: String) -> Result<GitBranchList, String
 
     let (local_output, remote_output, wt_output) = tokio::join!(local_fut, remote_fut, wt_fut);
 
-    let local_output = local_output.map_err(|e| e.to_string())?;
+    let local_output = local_output.map_err(AppCommandError::io)?;
     if !local_output.status.success() {
-        let stderr = String::from_utf8_lossy(&local_output.stderr);
-        return Err(format!("git branch failed: {}", stderr.trim()));
+        return Err(git_command_error("branch", &local_output.stderr));
     }
 
     let local: Vec<String> = String::from_utf8_lossy(&local_output.stdout)
@@ -1094,14 +1104,14 @@ pub async fn git_list_all_branches(path: String) -> Result<GitBranchList, String
 }
 
 #[tauri::command]
-pub async fn git_merge(path: String, branch_name: String) -> Result<GitMergeResult, String> {
+pub async fn git_merge(path: String, branch_name: String) -> Result<GitMergeResult, AppCommandError> {
     // Count commits to be merged before performing merge
     let count_output = crate::process::tokio_command("git")
         .args(["rev-list", "--count", &format!("HEAD..{}", branch_name)])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     let merged_commits = if count_output.status.success() {
         String::from_utf8_lossy(&count_output.stdout)
@@ -1117,27 +1127,25 @@ pub async fn git_merge(path: String, branch_name: String) -> Result<GitMergeResu
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git merge failed: {}", stderr.trim()));
+        return Err(git_command_error("merge", &output.stderr));
     }
     Ok(GitMergeResult { merged_commits })
 }
 
 #[tauri::command]
-pub async fn git_rebase(path: String, branch_name: String) -> Result<String, String> {
+pub async fn git_rebase(path: String, branch_name: String) -> Result<String, AppCommandError> {
     let output = crate::process::tokio_command("git")
         .args(["rebase", &branch_name])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git rebase failed: {}", stderr.trim()));
+        return Err(git_command_error("rebase", &output.stderr));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
@@ -1147,18 +1155,17 @@ pub async fn git_delete_branch(
     path: String,
     branch_name: String,
     force: bool,
-) -> Result<String, String> {
+) -> Result<String, AppCommandError> {
     let flag = if force { "-D" } else { "-d" };
     let output = crate::process::tokio_command("git")
         .args(["branch", flag, &branch_name])
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppCommandError::io)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git branch {} failed: {}", flag, stderr.trim()));
+        return Err(git_command_error(&format!("branch {flag}"), &output.stderr));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

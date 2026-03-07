@@ -124,6 +124,8 @@ type Action =
       contextKey: string
       tool_call_id: string
       title: string | null
+      fallback_title: string
+      fallback_kind: string
       status: string | null
       content: string | null
       raw_input: string | null
@@ -135,6 +137,8 @@ type Action =
       contextKey: string
       request_id: string
       tool_call: unknown
+      fallback_title: string
+      fallback_kind: string
       options: PermissionOptionInfo[]
     }
   | { type: "PERMISSION_CLEARED"; contextKey: string }
@@ -216,28 +220,28 @@ function serializePermissionToolCall(toolCall: unknown): string | null {
   }
 }
 
-function extractPermissionToolTitle(toolCall: unknown): string {
+function extractPermissionToolTitle(toolCall: unknown): string | null {
   const record = asRecord(toolCall)
-  if (!record) return "Tool"
+  if (!record) return null
   const candidates = [record.title, record.tool_name, record.name, record.type]
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate
     }
   }
-  return "Tool"
+  return null
 }
 
-function extractPermissionToolKind(toolCall: unknown): string {
+function extractPermissionToolKind(toolCall: unknown): string | null {
   const record = asRecord(toolCall)
-  if (!record) return "tool"
+  if (!record) return null
   const candidates = [record.kind, record.tool_name, record.name, record.type]
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate
     }
   }
-  return "tool"
+  return null
 }
 
 function sameModes(
@@ -572,8 +576,8 @@ function connectionsReducer(
             type: "tool_call",
             info: {
               tool_call_id: action.tool_call_id,
-              title: action.title ?? "Tool",
-              kind: "tool",
+              title: action.title ?? action.fallback_title,
+              kind: action.fallback_kind,
               status:
                 action.status ??
                 (normalizedRawOutput ? "in_progress" : "pending"),
@@ -665,8 +669,12 @@ function connectionsReducer(
                 type: "tool_call",
                 info: {
                   tool_call_id: permissionCallId,
-                  title: extractPermissionToolTitle(action.tool_call),
-                  kind: extractPermissionToolKind(action.tool_call),
+                  title:
+                    extractPermissionToolTitle(action.tool_call) ??
+                    action.fallback_title,
+                  kind:
+                    extractPermissionToolKind(action.tool_call) ??
+                    action.fallback_kind,
                   status: "pending",
                   content: null,
                   raw_input: permissionToolInput,
@@ -1247,6 +1255,8 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             contextKey,
             tool_call_id: e.tool_call_id,
             title: e.title,
+            fallback_title: t("toolFallbackTitle"),
+            fallback_kind: "tool",
             status: e.status,
             content: e.content,
             raw_input: e.raw_input,
@@ -1261,6 +1271,8 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             contextKey,
             request_id: e.request_id,
             tool_call: e.tool_call,
+            fallback_title: t("toolFallbackTitle"),
+            fallback_kind: "tool",
             options: e.options,
           })
           break
@@ -1322,7 +1334,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
         case "error":
           flushStreamingQueue()
           dispatch({ type: "ERROR", contextKey, message: e.message })
-          pushAlertRef.current("error", "Agent 错误", e.message)
+          pushAlertRef.current("error", t("eventErrorTitle"), e.message)
           break
         case "available_commands":
           flushStreamingQueue()
@@ -1334,7 +1346,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           break
       }
     },
-    [dispatch, enqueueStreamingAction, flushStreamingQueue]
+    [dispatch, enqueueStreamingAction, flushStreamingQueue, t]
   )
 
   // Single global event listener

@@ -50,6 +50,7 @@ export function useConnectionLifecycle({
   sessionId,
 }: UseConnectionLifecycleOptions): UseConnectionLifecycleReturn {
   const t = useTranslations("Folder.chat.connectionLifecycle")
+  const sharedT = useTranslations("Folder.chat.shared")
   const { setActiveKey, touchActivity } = useAcpActions()
   const { addTask, updateTask, removeTask } = useTaskContext()
   const conn = useConnection(contextKey)
@@ -312,7 +313,10 @@ export function useConnectionLifecycle({
   const handleSend = useCallback(
     (draft: PromptDraft, modeId?: string | null) => {
       touchActivity(contextKey)
-      setPendingPromptText(contextKey, getPromptDraftDisplayText(draft))
+      setPendingPromptText(
+        contextKey,
+        getPromptDraftDisplayText(draft, sharedT("attachedResources"))
+      )
       void (async () => {
         const currentModeId = modeIdRef.current
         if (modeId && modeId !== currentModeId) {
@@ -326,7 +330,7 @@ export function useConnectionLifecycle({
         console.error("[ConnLifecycle] sendPrompt:", e)
       )
     },
-    [connSetMode, sendPrompt, contextKey, touchActivity]
+    [connSetMode, sendPrompt, contextKey, touchActivity, sharedT]
   )
 
   const handleCancel = useCallback(() => {

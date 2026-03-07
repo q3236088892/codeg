@@ -8,6 +8,8 @@ use crate::db::error::DbError;
 pub enum AppErrorCode {
     Unknown,
     InvalidInput,
+    ConfigurationMissing,
+    ConfigurationInvalid,
     NotFound,
     AlreadyExists,
     PermissionDenied,
@@ -79,5 +81,17 @@ impl AppCommandError {
 impl From<DbError> for AppCommandError {
     fn from(value: DbError) -> Self {
         Self::db(value)
+    }
+}
+
+impl From<String> for AppCommandError {
+    fn from(value: String) -> Self {
+        Self::new(AppErrorCode::Unknown, "Operation failed").with_detail(value)
+    }
+}
+
+impl From<&str> for AppCommandError {
+    fn from(value: &str) -> Self {
+        Self::from(value.to_string())
     }
 }
