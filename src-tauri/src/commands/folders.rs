@@ -2390,11 +2390,16 @@ pub async fn git_log(
     limit: Option<u32>,
     branch: Option<String>,
 ) -> Result<Vec<GitLogEntry>, AppCommandError> {
+    const COMMIT_META_PREFIX: &str = "__COMMIT__\0";
+    const MESSAGE_END_MARKER: &str = "__COMMIT_MESSAGE_END__";
+
     let limit_str = format!("-{}", limit.unwrap_or(100));
     let mut args = vec![
         "log".to_string(),
         limit_str,
-        "--format=__COMMIT__%x00%h%x00%H%x00%an%x00%aI%x00%s".to_string(),
+        format!(
+            "--format=__COMMIT__%x00%h%x00%H%x00%an%x00%aI%n%B%n{MESSAGE_END_MARKER}"
+        ),
         "--raw".to_string(),
         "--numstat".to_string(),
         "--no-renames".to_string(),
@@ -2415,20 +2420,20 @@ pub async fn git_log(
 
     let mut entries = Vec::<GitLogEntry>::new();
     let mut current: Option<GitLogEntryBuilder> = None;
+    let mut reading_message = false;
 
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        if line.is_empty() {
-            continue;
-        }
-
-        if let Some(meta) = line.strip_prefix("__COMMIT__\0") {
+        if let Some(meta) = line.strip_prefix(COMMIT_META_PREFIX) {
             if let Some(entry) = current.take() {
                 entries.push(entry.finish());
             }
 
-            let parts: Vec<&str> = meta.splitn(5, '\0').collect();
-            if parts.len() == 5 {
+            let parts: Vec<&str> = meta.splitn(4, '\0').collect();
+            if parts.len() == 4 {
                 current = Some(GitLogEntryBuilder::new(parts));
+                reading_message = true;
+            } else {
+                reading_message = false;
             }
             continue;
         }
@@ -2436,6 +2441,20 @@ pub async fn git_log(
         let Some(entry) = current.as_mut() else {
             continue;
         };
+
+        if reading_message {
+            if line == MESSAGE_END_MARKER {
+                reading_message = false;
+                entry.finalize_message();
+            } else {
+                entry.push_message_line(line);
+            }
+            continue;
+        }
+
+        if line.is_empty() {
+            continue;
+        }
 
         if line.starts_with(':') {
             if let Some((status, file_path)) = parse_raw_file_line(line) {
@@ -2524,10 +2543,21 @@ impl GitLogEntryBuilder {
             full_hash: parts[1].to_string(),
             author: parts[2].to_string(),
             date: parts[3].to_string(),
-            message: parts[4].to_string(),
+            message: String::new(),
             files: Vec::new(),
             index_by_path: HashMap::new(),
         }
+    }
+
+    fn push_message_line(&mut self, line: &str) {
+        if !self.message.is_empty() {
+            self.message.push('\n');
+        }
+        self.message.push_str(line);
+    }
+
+    fn finalize_message(&mut self) {
+        self.message = self.message.trim_end_matches('\n').to_string();
     }
 
     fn get_or_insert_file(&mut self, path: String) -> &mut GitLogFileChange {
