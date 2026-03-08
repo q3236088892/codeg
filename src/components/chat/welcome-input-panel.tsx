@@ -1,13 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { MessageInput } from "@/components/chat/message-input"
 import type { AgentType, PromptDraft, SessionStats } from "@/lib/types"
 import { useFolderContext } from "@/contexts/folder-context"
 import { useTabContext } from "@/contexts/tab-context"
 import { useSessionStats } from "@/contexts/session-stats-context"
-import { useAcpActions } from "@/contexts/acp-connections-context"
+import {
+  useAcpActions,
+  type LiveMessage,
+} from "@/contexts/acp-connections-context"
 import { useConnectionLifecycle } from "@/hooks/use-connection-lifecycle"
 import type { AdaptedMessage } from "@/lib/adapters/ai-elements-adapter"
 import {
@@ -45,12 +48,10 @@ import { TurnStats } from "@/components/message/turn-stats"
 import { UserResourceLinks } from "@/components/message/user-resource-links"
 import { UserImageAttachments } from "@/components/message/user-image-attachments"
 import { ConversationShell } from "@/components/chat/conversation-shell"
-import {
-  MessageThread,
-  MessageThreadContent,
-} from "@/components/ai-elements/message-thread"
+import { MessageThread } from "@/components/ai-elements/message-thread"
 import { Message, MessageContent } from "@/components/ai-elements/message"
 import { ContentPartsRenderer } from "@/components/message/content-parts-renderer"
+import { VirtualizedMessageThread } from "@/components/message/virtualized-message-thread"
 
 const ACP_AGENTS_UPDATED_EVENT = "app://acp-agents-updated"
 
@@ -89,6 +90,49 @@ function buildInlineAutoConnectErrorMessage(
   if (options.alreadyContainsPath(normalized)) return normalized
   return options.append(normalized)
 }
+
+type WelcomeThreadItem =
+  | { key: string; kind: "history"; message: AdaptedMessage }
+  | {
+      key: string
+      kind: "live"
+      message: LiveMessage
+    }
+
+const WelcomeHistoryMessage = memo(function WelcomeHistoryMessage({
+  message,
+}: {
+  message: AdaptedMessage
+}) {
+  return (
+    <div>
+      <Message from={message.role === "tool" ? "assistant" : message.role}>
+        {message.role === "user" && message.userImages?.length ? (
+          <UserImageAttachments
+            images={message.userImages}
+            className="self-end"
+          />
+        ) : null}
+        <MessageContent>
+          <ContentPartsRenderer parts={message.content} role={message.role} />
+        </MessageContent>
+        {message.role === "user" && message.userResources?.length ? (
+          <UserResourceLinks
+            resources={message.userResources}
+            className="self-end"
+          />
+        ) : null}
+      </Message>
+      {message.role === "assistant" && (
+        <TurnStats
+          usage={message.usage}
+          duration_ms={message.duration_ms}
+          model={message.model}
+        />
+      )}
+    </div>
+  )
+})
 
 export function WelcomeInputPanel({
   defaultAgentType,
@@ -750,6 +794,35 @@ export function WelcomeInputPanel({
   }
   prevHistoryLenRef.current = history.length
 
+  const showLive = Boolean(
+    conn.liveMessage &&
+    (connStatus === "prompting" ||
+      (conn.liveMessage.content.length > 0 && showLiveTransitionRef.current))
+  )
+
+  const threadItems = useMemo<WelcomeThreadItem[]>(() => {
+    const items: WelcomeThreadItem[] = history.map((message) => ({
+      key: `history-${message.id}`,
+      kind: "history",
+      message,
+    }))
+    if (showLive && conn.liveMessage) {
+      items.push({
+        key: `live-${conn.liveMessage.id}`,
+        kind: "live",
+        message: conn.liveMessage,
+      })
+    }
+    return items
+  }, [history, showLive, conn.liveMessage])
+
+  const renderThreadItem = useCallback((item: WelcomeThreadItem) => {
+    if (item.kind === "live") {
+      return <LiveMessageBlock message={item.message} />
+    }
+    return <WelcomeHistoryMessage message={item.message} />
+  }, [])
+
   // ── Welcome phase ──
   if (phase === "welcome") {
     return (
@@ -820,14 +893,6 @@ export function WelcomeInputPanel({
     )
   }
 
-  // ── Conversation phase ──
-
-  const showLive = Boolean(
-    conn.liveMessage &&
-    (connStatus === "prompting" ||
-      (conn.liveMessage.content.length > 0 && showLiveTransitionRef.current))
-  )
-
   return (
     <ConversationShell
       status={connStatus}
@@ -852,37 +917,13 @@ export function WelcomeInputPanel({
     >
       <div className="relative flex flex-col h-full">
         <MessageThread className="flex-1 min-h-0">
-          <MessageThreadContent className="p-4 max-w-3xl mx-auto">
-            {history.map((msg) => (
-              <div key={msg.id}>
-                <Message from={msg.role === "tool" ? "assistant" : msg.role}>
-                  {msg.role === "user" && msg.userImages?.length ? (
-                    <UserImageAttachments
-                      images={msg.userImages}
-                      className="self-end"
-                    />
-                  ) : null}
-                  <MessageContent>
-                    <ContentPartsRenderer parts={msg.content} role={msg.role} />
-                  </MessageContent>
-                  {msg.role === "user" && msg.userResources?.length ? (
-                    <UserResourceLinks
-                      resources={msg.userResources}
-                      className="self-end"
-                    />
-                  ) : null}
-                </Message>
-                {msg.role === "assistant" && (
-                  <TurnStats
-                    usage={msg.usage}
-                    duration_ms={msg.duration_ms}
-                    model={msg.model}
-                  />
-                )}
-              </div>
-            ))}
-            {showLive && <LiveMessageBlock message={conn.liveMessage!} />}
-          </MessageThreadContent>
+          <VirtualizedMessageThread
+            items={threadItems}
+            getItemKey={(item) => item.key}
+            renderItem={renderThreadItem}
+            estimateSize={180}
+            overscan={10}
+          />
         </MessageThread>
         {showLive && <LiveTurnStats message={conn.liveMessage!} />}
         <AgentPlanOverlay

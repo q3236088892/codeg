@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useEffect, useMemo, useRef } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef } from "react"
 import { useDbMessageDetail } from "@/hooks/use-db-message-detail"
 import { ContentPartsRenderer } from "./content-parts-renderer"
 import {
@@ -21,10 +21,7 @@ import { useSessionStats } from "@/contexts/session-stats-context"
 import { LiveMessageBlock } from "@/components/chat/live-message-block"
 import { AgentPlanOverlay } from "@/components/chat/agent-plan-overlay"
 import type { LiveMessage } from "@/contexts/acp-connections-context"
-import {
-  MessageThread,
-  MessageThreadContent,
-} from "@/components/ai-elements/message-thread"
+import { MessageThread } from "@/components/ai-elements/message-thread"
 import { Message, MessageContent } from "@/components/ai-elements/message"
 import { Loader2 } from "lucide-react"
 import { useTranslations } from "next-intl"
@@ -32,8 +29,8 @@ import {
   buildPlanKey,
   extractLatestPlanEntriesFromMessages,
 } from "@/lib/agent-plan"
-
 import type { ConnectionStatus } from "@/lib/types"
+import { VirtualizedMessageThread } from "@/components/message/virtualized-message-thread"
 
 interface MessageListViewProps {
   conversationId: number
@@ -49,6 +46,27 @@ interface ResolvedMessageGroup extends MessageGroup {
   resources: UserResourceDisplay[]
   images: UserImageDisplay[]
 }
+
+type ThreadRenderItem =
+  | {
+      key: string
+      kind: "historical"
+      group: ResolvedMessageGroup
+    }
+  | {
+      key: string
+      kind: "pending"
+      group: ResolvedMessageGroup
+    }
+  | {
+      key: string
+      kind: "typing"
+    }
+  | {
+      key: string
+      kind: "live"
+      message: LiveMessage
+    }
 
 function fallbackExtractUserResources(
   group: MessageGroup,
@@ -125,12 +143,7 @@ const HistoricalMessageGroup = memo(function HistoricalMessageGroup({
   group: ResolvedMessageGroup
 }) {
   return (
-    <div
-      style={{
-        contentVisibility: "auto",
-        containIntrinsicSize: "auto 120px",
-      }}
-    >
+    <div>
       <Message from={group.role}>
         {group.role === "user" && group.images.length > 0 ? (
           <UserImageAttachments images={group.images} className="self-end" />
@@ -176,6 +189,20 @@ const PendingMessageGroup = memo(function PendingMessageGroup({
   )
 })
 
+const PendingTypingIndicator = memo(function PendingTypingIndicator() {
+  return (
+    <Message from="assistant">
+      <MessageContent>
+        <div className="flex items-center gap-1.5 py-1">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-[pulse_1.4s_ease-in-out_infinite]" />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
+        </div>
+      </MessageContent>
+    </Message>
+  )
+})
+
 export function MessageListView({
   conversationId,
   connStatus,
@@ -189,7 +216,6 @@ export function MessageListView({
   const { detail, loading, error, refetch } = useDbMessageDetail(conversationId)
   const turnCount = detail?.turns.length ?? 0
 
-  // Refetch when agent turn completes (prompting → other status)
   const prevStatusRef = useRef(connStatus)
   useEffect(() => {
     const prev = prevStatusRef.current
@@ -199,12 +225,10 @@ export function MessageListView({
     }
   }, [connStatus, refetch])
 
-  // Clear pending when detail gains new turns (new data fetched successfully)
   const prevTurnCountRef = useRef(turnCount)
   const prevConvIdRef = useRef(conversationId)
   useEffect(() => {
     if (prevConvIdRef.current !== conversationId) {
-      // Conversation switched — reset baseline, don't clear
       prevConvIdRef.current = conversationId
       prevTurnCountRef.current = turnCount
       return
@@ -224,9 +248,6 @@ export function MessageListView({
     }
   }, [isActive, sessionStats, setSessionStats])
 
-  // Track whether the initial scroll has happened.
-  // After that, disable resize-triggered scroll so tab switches
-  // don't jump to the bottom.
   const shouldUseSmoothResize = !(isActive && !loading && detail)
 
   const messages = useMemo(
@@ -255,19 +276,19 @@ export function MessageListView({
       pendingMessages?.length ? groupAdaptedMessages(pendingMessages) : [],
     [pendingMessages]
   )
+  const attachedResourcesText = sharedT("attachedResources")
+
   const resolvedGroups = useMemo(
     () =>
-      groups.map((group) =>
-        resolveMessageGroup(group, sharedT("attachedResources"))
-      ),
-    [groups, sharedT]
+      groups.map((group) => resolveMessageGroup(group, attachedResourcesText)),
+    [groups, attachedResourcesText]
   )
   const resolvedPendingGroups = useMemo(
     () =>
       pendingGroups.map((group) =>
-        resolveMessageGroup(group, sharedT("attachedResources"))
+        resolveMessageGroup(group, attachedResourcesText)
       ),
-    [pendingGroups, sharedT]
+    [pendingGroups, attachedResourcesText]
   )
 
   const showLiveMessage = Boolean(
@@ -275,6 +296,62 @@ export function MessageListView({
     (connStatus === "prompting" ||
       (liveMessage.content.length > 0 && resolvedPendingGroups.length > 0))
   )
+
+  const threadItems = useMemo<ThreadRenderItem[]>(() => {
+    const items: ThreadRenderItem[] = [
+      ...resolvedGroups.map((group) => ({
+        key: `history-${group.id}`,
+        kind: "historical" as const,
+        group,
+      })),
+      ...resolvedPendingGroups.map((group) => ({
+        key: `pending-${group.id}`,
+        kind: "pending" as const,
+        group,
+      })),
+    ]
+
+    if (resolvedPendingGroups.length > 0 && !showLiveMessage) {
+      items.push({ key: "pending-typing", kind: "typing" })
+    }
+
+    if (showLiveMessage && liveMessage) {
+      items.push({
+        key: `live-${liveMessage.id}`,
+        kind: "live",
+        message: liveMessage,
+      })
+    }
+
+    return items
+  }, [resolvedGroups, resolvedPendingGroups, showLiveMessage, liveMessage])
+
+  const renderThreadItem = useCallback((item: ThreadRenderItem) => {
+    switch (item.kind) {
+      case "historical":
+        return <HistoricalMessageGroup group={item.group} />
+      case "pending":
+        return <PendingMessageGroup group={item.group} />
+      case "typing":
+        return <PendingTypingIndicator />
+      case "live":
+        return <LiveMessageBlock message={item.message} />
+      default:
+        return null
+    }
+  }, [])
+
+  const emptyState = useMemo(
+    () => (
+      <div className="px-4 py-12 text-center">
+        <p className="text-muted-foreground text-sm">
+          {t("emptyConversation")}
+        </p>
+      </div>
+    ),
+    [t]
+  )
+
   const agentPlanOverlayKey = liveMessage?.id ?? `history-${conversationId}`
 
   if (loading && !detail) {
@@ -304,45 +381,18 @@ export function MessageListView({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      {/* Messages */}
       <MessageThread
         className="flex-1 min-h-0"
         resize={shouldUseSmoothResize ? "smooth" : undefined}
       >
-        <MessageThreadContent className="p-4 max-w-3xl mx-auto">
-          {resolvedGroups.length === 0 &&
-          resolvedPendingGroups.length === 0 &&
-          !showLiveMessage ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground text-sm">
-                {t("emptyConversation")}
-              </p>
-            </div>
-          ) : (
-            <>
-              {resolvedGroups.map((group) => (
-                <HistoricalMessageGroup key={group.id} group={group} />
-              ))}
-              {resolvedPendingGroups.map((group) => (
-                <PendingMessageGroup key={group.id} group={group} />
-              ))}
-              {resolvedPendingGroups.length > 0 && !showLiveMessage && (
-                <Message from="assistant">
-                  <MessageContent>
-                    <div className="flex items-center gap-1.5 py-1">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-[pulse_1.4s_ease-in-out_infinite]" />
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
-                    </div>
-                  </MessageContent>
-                </Message>
-              )}
-              {showLiveMessage && liveMessage && (
-                <LiveMessageBlock message={liveMessage} />
-              )}
-            </>
-          )}
-        </MessageThreadContent>
+        <VirtualizedMessageThread
+          items={threadItems}
+          getItemKey={(item) => item.key}
+          renderItem={renderThreadItem}
+          emptyState={emptyState}
+          estimateSize={180}
+          overscan={10}
+        />
       </MessageThread>
       {showLiveMessage && liveMessage && (
         <LiveTurnStats message={liveMessage} />
