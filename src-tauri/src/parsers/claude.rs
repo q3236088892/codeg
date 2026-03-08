@@ -626,6 +626,11 @@ fn extract_user_content(value: &serde_json::Value) -> Vec<ContentBlock> {
                         }
                     }
                 }
+                "image" => {
+                    if let Some(image_block) = extract_claude_user_image(item) {
+                        blocks.push(image_block);
+                    }
+                }
                 "tool_result" | "server_tool_result" => {
                     let tool_use_id = item
                         .get("tool_use_id")
@@ -648,6 +653,61 @@ fn extract_user_content(value: &serde_json::Value) -> Vec<ContentBlock> {
     }
 
     blocks
+}
+
+fn extract_claude_user_image(item: &serde_json::Value) -> Option<ContentBlock> {
+    let source = item.get("source");
+    let source_data = source
+        .and_then(|s| s.get("data"))
+        .and_then(|d| d.as_str())
+        .or_else(|| item.get("data").and_then(|d| d.as_str()))
+        .map(str::trim)
+        .filter(|v| !v.is_empty())?;
+
+    if let Some((mime_type, data)) = parse_data_uri_image(source_data) {
+        return Some(ContentBlock::Image {
+            data,
+            mime_type,
+            uri: None,
+        });
+    }
+
+    let mime_type = source
+        .and_then(|s| s.get("media_type"))
+        .and_then(|m| m.as_str())
+        .or_else(|| source.and_then(|s| s.get("mime_type")).and_then(|m| m.as_str()))
+        .or_else(|| item.get("media_type").and_then(|m| m.as_str()))
+        .or_else(|| item.get("mime_type").and_then(|m| m.as_str()))
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && m.starts_with("image/"))?;
+
+    let uri = source
+        .and_then(|s| s.get("url"))
+        .and_then(|u| u.as_str())
+        .or_else(|| item.get("url").and_then(|u| u.as_str()))
+        .map(|u| u.to_string());
+
+    Some(ContentBlock::Image {
+        data: source_data.to_string(),
+        mime_type: mime_type.to_string(),
+        uri,
+    })
+}
+
+fn parse_data_uri_image(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    let without_prefix = trimmed.strip_prefix("data:")?;
+    let marker = ";base64,";
+    let marker_idx = without_prefix.find(marker)?;
+    let mime_type = without_prefix.get(..marker_idx)?.trim();
+    if !mime_type.starts_with("image/") {
+        return None;
+    }
+    let data = without_prefix.get(marker_idx + marker.len()..)?.trim();
+    if data.is_empty() {
+        return None;
+    }
+    Some((mime_type.to_string(), data.to_string()))
 }
 
 fn extract_assistant_content(value: &serde_json::Value) -> Vec<ContentBlock> {
@@ -832,6 +892,7 @@ mod tests {
     use std::io::Write;
 
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn parses_model_capacity_suffix() {
@@ -973,5 +1034,58 @@ mod tests {
     fn claude_config_dir_defaults_to_home_dot_claude() {
         let resolved = resolve_claude_config_dir_from(None, Some(PathBuf::from("/Users/default")));
         assert_eq!(resolved, PathBuf::from("/Users/default/.claude"));
+    }
+
+    #[test]
+    fn extract_user_content_parses_claude_base64_image_block() {
+        let value = json!({
+            "message": {
+                "content": [
+                    {"type": "text", "text": "这个图片里面是什么"},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": "QUJDREVGRw=="
+                        }
+                    }
+                ]
+            }
+        });
+
+        let blocks = extract_user_content(&value);
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(&blocks[0], ContentBlock::Text { text } if text == "这个图片里面是什么"));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::Image { data, mime_type, uri }
+            if data == "QUJDREVGRw==" && mime_type == "image/jpeg" && uri.is_none()
+        ));
+    }
+
+    #[test]
+    fn extract_user_content_parses_claude_data_uri_image_block() {
+        let value = json!({
+            "message": {
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "data": "data:image/png;base64,QUJD"
+                        }
+                    }
+                ]
+            }
+        });
+
+        let blocks = extract_user_content(&value);
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Image { data, mime_type, uri }
+            if data == "QUJD" && mime_type == "image/png" && uri.is_none()
+        ));
     }
 }
