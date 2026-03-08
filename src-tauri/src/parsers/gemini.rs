@@ -154,6 +154,109 @@ impl GeminiParser {
             .or_else(|| message.get("message").and_then(Self::extract_text))
     }
 
+    fn parse_data_uri_image(raw: &str) -> Option<(String, String)> {
+        let trimmed = raw.trim();
+        let without_prefix = trimmed.strip_prefix("data:")?;
+        let marker = ";base64,";
+        let marker_idx = without_prefix.find(marker)?;
+        let mime_type = without_prefix.get(..marker_idx)?.trim();
+        if !mime_type.starts_with("image/") {
+            return None;
+        }
+        let data = without_prefix.get(marker_idx + marker.len()..)?.trim();
+        if data.is_empty() {
+            return None;
+        }
+        Some((mime_type.to_string(), data.to_string()))
+    }
+
+    fn parse_user_image_part(part: &serde_json::Value) -> Option<ContentBlock> {
+        let inline = part
+            .get("inlineData")
+            .or_else(|| part.get("inline_data"))
+            .unwrap_or(part);
+        let data = inline
+            .get("data")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())?;
+
+        if let Some((mime_type, data)) = Self::parse_data_uri_image(data) {
+            return Some(ContentBlock::Image {
+                data,
+                mime_type,
+                uri: None,
+            });
+        }
+
+        let mime_type = inline
+            .get("mimeType")
+            .or_else(|| inline.get("mime_type"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|m| !m.is_empty() && m.starts_with("image/"))?;
+        let uri = inline
+            .get("fileUri")
+            .or_else(|| inline.get("uri"))
+            .and_then(|u| u.as_str())
+            .map(|s| s.to_string());
+
+        Some(ContentBlock::Image {
+            data: data.to_string(),
+            mime_type: mime_type.to_string(),
+            uri,
+        })
+    }
+
+    fn parse_user_blocks(message: &serde_json::Value) -> Vec<ContentBlock> {
+        let mut blocks = Vec::new();
+        let content = match message.get("content") {
+            Some(c) => c,
+            None => {
+                if let Some(text) = message.get("message").and_then(Self::extract_text) {
+                    blocks.push(ContentBlock::Text { text });
+                }
+                return blocks;
+            }
+        };
+
+        if let Some(text) = content
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+        {
+            blocks.push(ContentBlock::Text { text });
+            return blocks;
+        }
+
+        if let Some(parts) = content.as_array() {
+            for part in parts {
+                if let Some(text) = part.get("text").and_then(Self::extract_text) {
+                    blocks.push(ContentBlock::Text { text });
+                } else if let Some(text) = Self::extract_text(part) {
+                    blocks.push(ContentBlock::Text { text });
+                }
+
+                if let Some(image) = Self::parse_user_image_part(part) {
+                    blocks.push(image);
+                }
+            }
+            return blocks;
+        }
+
+        if let Some(image) = Self::parse_user_image_part(content) {
+            blocks.push(image);
+            return blocks;
+        }
+
+        if let Some(text) = Self::extract_text(content) {
+            blocks.push(ContentBlock::Text { text });
+        }
+
+        blocks
+    }
+
     fn parse_summary_from_value(
         &self,
         path: &Path,
@@ -382,13 +485,14 @@ impl GeminiParser {
 
             match msg_type.as_str() {
                 "user" => {
-                    let Some(text) = Self::extract_message_text(&raw) else {
+                    let blocks = Self::parse_user_blocks(&raw);
+                    if blocks.is_empty() {
                         continue;
-                    };
+                    }
                     messages.push(UnifiedMessage {
                         id: msg_id,
                         role: MessageRole::User,
-                        content: vec![ContentBlock::Text { text }],
+                        content: blocks,
                         timestamp,
                         usage: None,
                         duration_ms: None,
@@ -609,6 +713,7 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 mod tests {
     use super::resolve_gemini_base_dir_from;
     use super::GeminiParser;
+    use crate::models::ContentBlock;
     use crate::parsers::AgentParser;
     use std::env;
     use std::fs;
@@ -705,5 +810,45 @@ mod tests {
     fn gemini_defaults_to_home_dot_gemini() {
         let resolved = resolve_gemini_base_dir_from(None, Some(PathBuf::from("/Users/default")));
         assert_eq!(resolved, PathBuf::from("/Users/default/.gemini"));
+    }
+
+    #[test]
+    fn parses_user_inline_image_block() {
+        let message = serde_json::json!({
+            "content": [
+                {"text": "这是什么"},
+                {"inlineData": {"mimeType": "image/jpeg", "data": "QUJD"}}
+            ]
+        });
+
+        let blocks = GeminiParser::parse_user_blocks(&message);
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(&blocks[0], ContentBlock::Text { text } if text == "这是什么"));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::Image { data, mime_type, uri }
+            if data == "QUJD" && mime_type == "image/jpeg" && uri.is_none()
+        ));
+    }
+
+    #[test]
+    fn parses_user_data_uri_image_block() {
+        let message = serde_json::json!({
+            "content": [
+                {
+                    "inlineData": {
+                        "data": "data:image/png;base64,QUJD"
+                    }
+                }
+            ]
+        });
+
+        let blocks = GeminiParser::parse_user_blocks(&message);
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Image { data, mime_type, uri }
+            if data == "QUJD" && mime_type == "image/png" && uri.is_none()
+        ));
     }
 }
