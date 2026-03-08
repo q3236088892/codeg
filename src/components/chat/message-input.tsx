@@ -976,9 +976,9 @@ export function MessageInput({
   const hasResourceAttachments = resourceAttachments.length > 0
   const topPaddingClass =
     hasImageAttachments && hasResourceAttachments
-      ? "pt-24"
+      ? "pt-[6.25rem]"
       : hasImageAttachments
-        ? "pt-16"
+        ? "pt-[4.5rem]"
         : hasResourceAttachments
           ? "pt-10"
           : "pt-3"
