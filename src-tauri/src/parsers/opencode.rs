@@ -389,7 +389,9 @@ impl OpenCodeParser {
                     });
                 }
                 "file" => {
-                    if let Some(file_ref) = extract_file_reference(&value) {
+                    if let Some(image_block) = extract_opencode_file_image(&value) {
+                        blocks.push(image_block);
+                    } else if let Some(file_ref) = extract_file_reference(&value) {
                         blocks.push(ContentBlock::Text {
                             text: format!("@{}", file_ref),
                         });
@@ -500,6 +502,81 @@ fn extract_file_reference(value: &serde_json::Value) -> Option<String> {
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
+}
+
+fn parse_data_uri_image(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    let without_prefix = trimmed.strip_prefix("data:")?;
+    let marker = ";base64,";
+    let marker_idx = without_prefix.find(marker)?;
+    let mime_type = without_prefix.get(..marker_idx)?.trim();
+    if !mime_type.starts_with("image/") {
+        return None;
+    }
+    let data = without_prefix.get(marker_idx + marker.len()..)?.trim();
+    if data.is_empty() {
+        return None;
+    }
+    Some((mime_type.to_string(), data.to_string()))
+}
+
+fn extract_opencode_file_image(value: &serde_json::Value) -> Option<ContentBlock> {
+    let mime = value
+        .get("mime")
+        .or_else(|| value.get("mimeType"))
+        .or_else(|| value.get("mime_type"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && m.starts_with("image/"))
+        .map(|s| s.to_string());
+
+    let url = value
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    if let Some(raw_url) = url {
+        if let Some((mime_type, data)) = parse_data_uri_image(raw_url) {
+            let uri = value
+                .get("filename")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            return Some(ContentBlock::Image {
+                data,
+                mime_type,
+                uri,
+            });
+        }
+    }
+
+    let mime_type = mime?;
+    let data = value
+        .get("data")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())?;
+    let uri = value
+        .get("filename")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            value
+                .get("source")
+                .and_then(|s| s.get("path"))
+                .and_then(|v| v.as_str())
+        })
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    Some(ContentBlock::Image {
+        data,
+        mime_type,
+        uri,
+    })
 }
 
 fn is_error_status(status: &str) -> bool {
@@ -620,7 +697,8 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_xdg_data_home;
+    use super::{extract_opencode_file_image, resolve_xdg_data_home};
+    use crate::models::ContentBlock;
     use std::path::PathBuf;
 
     #[test]
@@ -636,5 +714,34 @@ mod tests {
     fn xdg_data_home_falls_back_to_home_local_share() {
         let resolved = resolve_xdg_data_home(None, Some(PathBuf::from("/Users/default")));
         assert_eq!(resolved, Some(PathBuf::from("/Users/default/.local/share")));
+    }
+
+    #[test]
+    fn parses_opencode_user_image_file_part_from_data_uri() {
+        let value = serde_json::json!({
+            "type": "file",
+            "mime": "image/jpeg",
+            "filename": "avatar.jpg",
+            "url": "data:image/jpeg;base64,QUJD"
+        });
+
+        let block = extract_opencode_file_image(&value);
+        assert!(matches!(
+            block,
+            Some(ContentBlock::Image { data, mime_type, uri })
+            if data == "QUJD" && mime_type == "image/jpeg" && uri.as_deref() == Some("avatar.jpg")
+        ));
+    }
+
+    #[test]
+    fn ignores_non_image_file_part_for_image_parsing() {
+        let value = serde_json::json!({
+            "type": "file",
+            "mime": "text/plain",
+            "filename": "notes.txt",
+            "url": "file:///tmp/notes.txt"
+        });
+
+        assert!(extract_opencode_file_image(&value).is_none());
     }
 }
