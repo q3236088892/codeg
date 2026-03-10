@@ -1114,8 +1114,7 @@
       },
       "shared": {
         "attachedResources": "Recursos anexados",
-        "toolCallFailed": "Falha na chamada da ferramenta",
-        "planUpdated": "Plano atualizado"
+        "toolCallFailed": "Falha na chamada da ferramenta"
       },
       "messageThread": {
         "emptyTitle": "Ainda não há mensagens",
@@ -1146,9 +1145,6 @@
       "agentSelector": {
         "noEnabledAgents": "Nenhum agente habilitado",
         "openAgentsSettings": "Abrir configurações de agentes"
-      },
-      "liveMessageBlock": {
-        "assistantThinkingAria": "O assistente está pensando"
       },
       "agentPlanOverlay": {
         "title": "Plano do agente",

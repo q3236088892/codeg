@@ -1114,8 +1114,7 @@
       },
       "shared": {
         "attachedResources": "添付リソース",
-        "toolCallFailed": "ツール呼び出しに失敗しました",
-        "planUpdated": "プランを更新しました"
+        "toolCallFailed": "ツール呼び出しに失敗しました"
       },
       "messageThread": {
         "emptyTitle": "まだメッセージはありません",
@@ -1146,9 +1145,6 @@
       "agentSelector": {
         "noEnabledAgents": "有効なエージェントがありません",
         "openAgentsSettings": "エージェント設定を開く"
-      },
-      "liveMessageBlock": {
-        "assistantThinkingAria": "アシスタントが考え中です"
       },
       "agentPlanOverlay": {
         "title": "エージェントプラン",

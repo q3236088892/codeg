@@ -1114,8 +1114,7 @@
       },
       "shared": {
         "attachedResources": "Attached resources",
-        "toolCallFailed": "Tool call failed",
-        "planUpdated": "Plan updated"
+        "toolCallFailed": "Tool call failed"
       },
       "messageThread": {
         "emptyTitle": "No messages yet",
@@ -1146,9 +1145,6 @@
       "agentSelector": {
         "noEnabledAgents": "No enabled agents",
         "openAgentsSettings": "Open Agents settings"
-      },
-      "liveMessageBlock": {
-        "assistantThinkingAria": "Assistant is thinking"
       },
       "agentPlanOverlay": {
         "title": "Agent Plan",

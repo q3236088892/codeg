@@ -540,6 +540,9 @@ const ConversationTabView = memo(function ConversationTabView({
       connStatus={connStatus}
       isActive={isActive}
       sendSignal={sendSignal}
+      sessionStats={detail?.session_stats ?? null}
+      detailLoading={detailLoading}
+      detailError={detailError}
     />
   )
 

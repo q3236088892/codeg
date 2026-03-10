@@ -1114,8 +1114,7 @@
       },
       "shared": {
         "attachedResources": "附加資源",
-        "toolCallFailed": "工具呼叫失敗",
-        "planUpdated": "計畫已更新"
+        "toolCallFailed": "工具呼叫失敗"
       },
       "messageThread": {
         "emptyTitle": "暫無訊息",
@@ -1146,9 +1145,6 @@
       "agentSelector": {
         "noEnabledAgents": "暫無已啟用的 Agent",
         "openAgentsSettings": "開啟 Agents 設定"
-      },
-      "liveMessageBlock": {
-        "assistantThinkingAria": "助手正在思考"
       },
       "agentPlanOverlay": {
         "title": "Agent 計畫",

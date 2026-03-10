@@ -306,6 +306,22 @@ function reducer(
       const current =
         state.byConversationId.get(action.conversationId) ??
         createEmptySession(action.conversationId)
+
+      // Guard: prevent stale liveMessage from ACP reconnects overriding
+      // persisted data. When a session has no active liveMessage and no
+      // pending interaction (idle or reconciling without a live turn),
+      // a SET_LIVE_MESSAGE from a reconnected ACP connection carries
+      // the completed response that is already in persistedTurns.
+      // Accepting it would cause duplicate assistant text in the timeline.
+      if (
+        action.liveMessage !== null &&
+        current.liveMessage === null &&
+        current.syncState !== "awaiting_persist" &&
+        current.persistedTurns.length > 0
+      ) {
+        return state
+      }
+
       const nextSession: ConversationRuntimeSession = {
         ...current,
         liveMessage: action.liveMessage,

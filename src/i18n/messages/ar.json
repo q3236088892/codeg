@@ -1114,8 +1114,7 @@
       },
       "shared": {
         "attachedResources": "الموارد المرفقة",
-        "toolCallFailed": "فشل استدعاء الأداة",
-        "planUpdated": "تم تحديث الخطة"
+        "toolCallFailed": "فشل استدعاء الأداة"
       },
       "messageThread": {
         "emptyTitle": "لا توجد رسائل بعد",
@@ -1146,9 +1145,6 @@
       "agentSelector": {
         "noEnabledAgents": "لا يوجد وكلاء مفعّلون",
         "openAgentsSettings": "فتح إعدادات الوكلاء"
-      },
-      "liveMessageBlock": {
-        "assistantThinkingAria": "المساعد يفكر"
       },
       "agentPlanOverlay": {
         "title": "خطة الوكيل",

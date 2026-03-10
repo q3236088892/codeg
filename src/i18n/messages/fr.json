@@ -1114,8 +1114,7 @@
       },
       "shared": {
         "attachedResources": "Ressources jointes",
-        "toolCallFailed": "Échec de l'appel d'outil",
-        "planUpdated": "Plan mis à jour"
+        "toolCallFailed": "Échec de l'appel d'outil"
       },
       "messageThread": {
         "emptyTitle": "Aucun message pour le moment",
@@ -1146,9 +1145,6 @@
       "agentSelector": {
         "noEnabledAgents": "Aucun agent activé",
         "openAgentsSettings": "Ouvrir les paramètres des agents"
-      },
-      "liveMessageBlock": {
-        "assistantThinkingAria": "L'assistant réfléchit"
       },
       "agentPlanOverlay": {
         "title": "Plan de l'agent",

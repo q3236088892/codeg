@@ -1,17 +1,14 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useRef } from "react"
-import { useDbMessageDetail } from "@/hooks/use-db-message-detail"
 import { useConversationRuntime } from "@/contexts/conversation-runtime-context"
 import { ContentPartsRenderer } from "./content-parts-renderer"
 import {
   adaptMessageTurns,
-  type AdaptedContentPart,
   type MessageGroup,
   type UserImageDisplay,
   type UserResourceDisplay,
   groupAdaptedMessages,
-  extractUserResourcesFromText,
 } from "@/lib/adapters/ai-elements-adapter"
 import { TurnStats } from "./turn-stats"
 import { LiveTurnStats } from "./live-turn-stats"
@@ -27,7 +24,7 @@ import {
   buildPlanKey,
   extractLatestPlanEntriesFromMessages,
 } from "@/lib/agent-plan"
-import type { ConnectionStatus } from "@/lib/types"
+import type { ConnectionStatus, SessionStats } from "@/lib/types"
 import { VirtualizedMessageThread } from "@/components/message/virtualized-message-thread"
 import { useStickToBottomContext } from "use-stick-to-bottom"
 
@@ -36,10 +33,12 @@ interface MessageListViewProps {
   connStatus?: ConnectionStatus | null
   isActive?: boolean
   sendSignal?: number
+  sessionStats?: SessionStats | null
+  detailLoading?: boolean
+  detailError?: string | null
 }
 
 interface ResolvedMessageGroup extends MessageGroup {
-  parts: AdaptedContentPart[]
   resources: UserResourceDisplay[]
   images: UserImageDisplay[]
 }
@@ -55,75 +54,6 @@ type ThreadRenderItem =
       key: string
       kind: "typing"
     }
-
-function fallbackExtractUserResources(
-  group: MessageGroup,
-  attachedResourcesText: string
-): {
-  parts: AdaptedContentPart[]
-  resources: UserResourceDisplay[]
-  images: UserImageDisplay[]
-} {
-  if (group.role !== "user") {
-    return {
-      parts: group.parts,
-      resources: group.userResources ?? [],
-      images: group.userImages ?? [],
-    }
-  }
-
-  const parsedResources: UserResourceDisplay[] = []
-  const parsedParts: AdaptedContentPart[] = []
-
-  for (const part of group.parts) {
-    if (part.type !== "text") {
-      parsedParts.push(part)
-      continue
-    }
-    const extracted = extractUserResourcesFromText(part.text)
-    if (extracted.resources.length > 0) {
-      parsedResources.push(...extracted.resources)
-      if (extracted.text.length > 0) {
-        parsedParts.push({ type: "text", text: extracted.text })
-      }
-    } else {
-      parsedParts.push(part)
-    }
-  }
-
-  const resources = [...(group.userResources ?? []), ...parsedResources]
-  const dedupedResources: UserResourceDisplay[] = []
-  const seen = new Set<string>()
-  for (const resource of resources) {
-    const key = `${resource.name}::${resource.uri}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    dedupedResources.push(resource)
-  }
-
-  if (parsedParts.length === 0 && dedupedResources.length > 0) {
-    parsedParts.push({ type: "text", text: attachedResourcesText })
-  }
-
-  return {
-    parts: parsedParts,
-    resources: dedupedResources,
-    images: group.userImages ?? [],
-  }
-}
-
-function resolveMessageGroup(
-  group: MessageGroup,
-  attachedResourcesText: string
-): ResolvedMessageGroup {
-  const resolved = fallbackExtractUserResources(group, attachedResourcesText)
-  return {
-    ...group,
-    parts: resolved.parts,
-    resources: resolved.resources,
-    images: resolved.images,
-  }
-}
 
 const HistoricalMessageGroup = memo(function HistoricalMessageGroup({
   group,
@@ -200,17 +130,18 @@ export function MessageListView({
   connStatus,
   isActive = true,
   sendSignal = 0,
+  sessionStats = null,
+  detailLoading = false,
+  detailError = null,
 }: MessageListViewProps) {
   const t = useTranslations("Folder.chat.messageList")
   const sharedT = useTranslations("Folder.chat.shared")
-  const { detail, loading, error } = useDbMessageDetail(conversationId)
   const { getSession, getTimelineTurns } = useConversationRuntime()
   const session = getSession(conversationId)
   const liveMessage = session?.liveMessage ?? null
   const timelineTurns = getTimelineTurns(conversationId)
 
   const { setSessionStats } = useSessionStats()
-  const sessionStats = detail?.session_stats ?? null
 
   useEffect(() => {
     if (isActive) {
@@ -218,88 +149,71 @@ export function MessageListView({
     }
   }, [isActive, sessionStats, setSessionStats])
 
-  const shouldUseSmoothResize = !(isActive && !loading && timelineTurns.length)
-  const attachedResourcesText = sharedT("attachedResources")
-
-  const groupedTimeline = useMemo(
-    () =>
-      timelineTurns.reduce<
-        Array<{
-          phase: "persisted" | "optimistic" | "streaming"
-          turns: typeof timelineTurns
-        }>
-      >((acc, item) => {
-        const current = acc[acc.length - 1]
-        if (current && current.phase === item.phase) {
-          current.turns.push(item)
-          return acc
-        }
-        acc.push({
-          phase: item.phase,
-          turns: [item],
-        })
-        return acc
-      }, []),
-    [timelineTurns]
+  const shouldUseSmoothResize = !(
+    isActive &&
+    !detailLoading &&
+    timelineTurns.length
   )
 
-  const threadItems = useMemo<ThreadRenderItem[]>(() => {
+  const adapterText = useMemo(
+    () => ({
+      attachedResources: sharedT("attachedResources"),
+      toolCallFailed: sharedT("toolCallFailed"),
+    }),
+    [sharedT]
+  )
+
+  const { threadItems, nonStreamingAdapted } = useMemo(() => {
+    const allTurns = timelineTurns.map((item) => item.turn)
+    const allAdapted = adaptMessageTurns(allTurns, adapterText)
+
+    // Collect non-streaming adapted messages for plan extraction
+    const nonStreaming = allAdapted.filter(
+      (_, index) => timelineTurns[index].phase !== "streaming"
+    )
+
+    // Group adapted messages per phase-chunk to prevent merging
+    // assistant turns across phase boundaries (e.g. persisted + streaming).
     const items: ThreadRenderItem[] = []
-    for (
-      let chunkIndex = 0;
-      chunkIndex < groupedTimeline.length;
-      chunkIndex++
-    ) {
-      const chunk = groupedTimeline[chunkIndex]
-      const adapted = adaptMessageTurns(
-        chunk.turns.map((item) => item.turn),
-        {
-          attachedResources: sharedT("attachedResources"),
-          toolCallFailed: sharedT("toolCallFailed"),
-        }
-      )
-      const groups = groupAdaptedMessages(adapted).map((group) =>
-        resolveMessageGroup(group, attachedResourcesText)
-      )
-      for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-        const group = groups[groupIndex]
+    let chunkStart = 0
+    while (chunkStart < allAdapted.length) {
+      const chunkPhase = timelineTurns[chunkStart].phase
+      let chunkEnd = chunkStart + 1
+      while (
+        chunkEnd < allAdapted.length &&
+        timelineTurns[chunkEnd].phase === chunkPhase
+      ) {
+        chunkEnd++
+      }
+      const chunkAdapted = allAdapted.slice(chunkStart, chunkEnd)
+      const groups = groupAdaptedMessages(chunkAdapted)
+      for (let i = 0; i < groups.length; i++) {
+        const group = groups[i]
         items.push({
-          key: `${chunk.phase}-${chunkIndex}-${group.id}-${groupIndex}`,
+          key: `${chunkPhase}-${chunkStart}-${group.id}-${i}`,
           kind: "turn",
-          group,
-          phase: chunk.phase,
+          group: {
+            ...group,
+            resources: group.userResources ?? [],
+            images: group.userImages ?? [],
+          },
+          phase: chunkPhase,
         })
       }
+      chunkStart = chunkEnd
     }
+
     const lastPhase = timelineTurns[timelineTurns.length - 1]?.phase ?? null
     if (connStatus === "prompting" && lastPhase === "optimistic") {
       items.push({ key: "pending-typing", kind: "typing" })
     }
-    return items
-  }, [
-    attachedResourcesText,
-    connStatus,
-    groupedTimeline,
-    sharedT,
-    timelineTurns,
-  ])
 
-  const historicalMessages = useMemo(
-    () =>
-      adaptMessageTurns(
-        timelineTurns
-          .filter((item) => item.phase !== "streaming")
-          .map((item) => item.turn),
-        {
-          attachedResources: sharedT("attachedResources"),
-          toolCallFailed: sharedT("toolCallFailed"),
-        }
-      ),
-    [sharedT, timelineTurns]
-  )
+    return { threadItems: items, nonStreamingAdapted: nonStreaming }
+  }, [adapterText, connStatus, timelineTurns])
+
   const historicalPlanEntries = useMemo(
-    () => extractLatestPlanEntriesFromMessages(historicalMessages),
-    [historicalMessages]
+    () => extractLatestPlanEntriesFromMessages(nonStreamingAdapted),
+    [nonStreamingAdapted]
   )
   const historicalPlanKey = useMemo(
     () => buildPlanKey(historicalPlanEntries),
@@ -337,7 +251,7 @@ export function MessageListView({
 
   const hasRenderableContent = threadItems.length > 0 || Boolean(liveMessage)
 
-  if (loading && !hasRenderableContent) {
+  if (detailLoading && !hasRenderableContent) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -348,12 +262,12 @@ export function MessageListView({
     )
   }
 
-  if (error && !hasRenderableContent) {
+  if (detailError && !hasRenderableContent) {
     return (
       <div className="p-6">
         <div className="text-center py-12">
           <p className="text-destructive text-sm">
-            {t("error", { message: error })}
+            {t("error", { message: detailError })}
           </p>
         </div>
       </div>
