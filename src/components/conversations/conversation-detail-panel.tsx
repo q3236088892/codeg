@@ -145,6 +145,7 @@ const ConversationTabView = memo(function ConversationTabView({
   const [draftAgentType, setDraftAgentType] = useState<AgentType>(agentType)
   const selectedAgent = conversationId != null ? agentType : draftAgentType
   const [modeId, setModeId] = useState<string | null>(null)
+  const [sendSignal, setSendSignal] = useState(0)
   const [agentsLoaded, setAgentsLoaded] = useState(false)
   const [usableAgentCount, setUsableAgentCount] = useState(0)
   const [agentConnectError, setAgentConnectError] = useState<string | null>(
@@ -433,6 +434,7 @@ const ConversationTabView = memo(function ConversationTabView({
         optimisticTurn,
         optimisticTurn.id
       )
+      setSendSignal((prev) => prev + 1)
       setSyncState(effectiveConversationId, "awaiting_persist")
 
       if (connStatus === "connected") {
@@ -577,6 +579,7 @@ const ConversationTabView = memo(function ConversationTabView({
       conversationId={effectiveConversationId}
       connStatus={connStatus}
       isActive={isActive}
+      sendSignal={sendSignal}
     />
   )
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useCallback, useEffect, useMemo } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef } from "react"
 import { useDbMessageDetail } from "@/hooks/use-db-message-detail"
 import { useConversationRuntime } from "@/contexts/conversation-runtime-context"
 import { ContentPartsRenderer } from "./content-parts-renderer"
@@ -29,11 +29,13 @@ import {
 } from "@/lib/agent-plan"
 import type { ConnectionStatus } from "@/lib/types"
 import { VirtualizedMessageThread } from "@/components/message/virtualized-message-thread"
+import { useStickToBottomContext } from "use-stick-to-bottom"
 
 interface MessageListViewProps {
   conversationId: number
   connStatus?: ConnectionStatus | null
   isActive?: boolean
+  sendSignal?: number
 }
 
 interface ResolvedMessageGroup extends MessageGroup {
@@ -169,10 +171,38 @@ const PendingTypingIndicator = memo(function PendingTypingIndicator() {
   )
 })
 
+const AutoScrollOnSend = memo(function AutoScrollOnSend({
+  signal,
+  enabled,
+}: {
+  signal: number
+  enabled: boolean
+}) {
+  const { scrollToBottom } = useStickToBottomContext()
+  const lastSignalRef = useRef(signal)
+
+  useEffect(() => {
+    if (!enabled) return
+    if (signal === lastSignalRef.current) return
+    lastSignalRef.current = signal
+
+    scrollToBottom()
+    const rafId = requestAnimationFrame(() => {
+      scrollToBottom()
+    })
+    return () => {
+      cancelAnimationFrame(rafId)
+    }
+  }, [enabled, scrollToBottom, signal])
+
+  return null
+})
+
 export function MessageListView({
   conversationId,
   connStatus,
   isActive = true,
+  sendSignal = 0,
 }: MessageListViewProps) {
   const t = useTranslations("Folder.chat.messageList")
   const sharedT = useTranslations("Folder.chat.shared")
@@ -339,6 +369,7 @@ export function MessageListView({
         className="flex-1 min-h-0"
         resize={shouldUseSmoothResize ? "smooth" : undefined}
       >
+        <AutoScrollOnSend signal={sendSignal} enabled={isActive} />
         <VirtualizedMessageThread
           items={threadItems}
           getItemKey={(item) => item.key}

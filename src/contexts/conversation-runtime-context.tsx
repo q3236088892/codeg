@@ -221,6 +221,9 @@ function reduceHydrateDetail(
   const current = state.byConversationId.get(conversationId)
   const nextExternalId = detail.summary.external_id ?? null
   const acceptSnapshot = shouldAcceptPersistedSnapshot(current, detail)
+  const prevPersistedTurnCount = current?.persistedTurns.length ?? 0
+  const prevPersistedMessageCount = current?.persistedMessageCount ?? 0
+  const prevPersistedUpdatedAt = current?.persistedUpdatedAt ?? null
   const optimisticTurns = current?.optimisticTurns ?? []
   const persistedTurns = acceptSnapshot
     ? detail.turns
@@ -234,11 +237,20 @@ function reduceHydrateDetail(
   const shouldDropOptimistic =
     optimisticTurns.length > 0 &&
     persistedTurns.length >= (current?.persistedTurns.length ?? 0) + 1
+  const nextUpdatedAt = detail.summary.updated_at ?? null
+  const hasPersistedAdvance =
+    acceptSnapshot &&
+    (detail.turns.length > prevPersistedTurnCount ||
+      detail.summary.message_count > prevPersistedMessageCount ||
+      (nextUpdatedAt !== null &&
+        (prevPersistedUpdatedAt === null ||
+          nextUpdatedAt > prevPersistedUpdatedAt)))
 
   const nextSession: ConversationRuntimeSession = {
     ...(current ?? createEmptySession(conversationId)),
     externalId: nextExternalId,
     persistedTurns,
+    liveMessage: hasPersistedAdvance ? null : (current?.liveMessage ?? null),
     optimisticTurns: shouldDropOptimistic ? [] : optimisticTurns,
     syncState: shouldDropOptimistic ? "idle" : (current?.syncState ?? "idle"),
     activeTurnToken: shouldDropOptimistic
@@ -370,6 +382,7 @@ function reducer(
 
       const preferFromSnapshot =
         from.persistedTurns.length >= to.persistedTurns.length
+      const mergedLiveMessage = to.liveMessage ?? from.liveMessage
 
       const merged: ConversationRuntimeSession = {
         ...to,
@@ -379,7 +392,7 @@ function reducer(
           ? from.persistedTurns
           : to.persistedTurns,
         optimisticTurns: [...from.optimisticTurns, ...to.optimisticTurns],
-        liveMessage: to.liveMessage ?? from.liveMessage,
+        liveMessage: mergedLiveMessage,
         syncState: to.syncState !== "idle" ? to.syncState : from.syncState,
         activeTurnToken: to.activeTurnToken ?? from.activeTurnToken,
         lastHydratedAt:
