@@ -31,7 +31,6 @@ import {
   GlobeIcon,
   ListTodoIcon,
   SparklesIcon,
-  BrainIcon,
   CircleIcon,
   CircleDotIcon,
   CircleCheckIcon,
@@ -873,9 +872,12 @@ function getToolIcon(
     return <ListTodoIcon className={ICON_CLASS} />
   if (name === "agent") return getTaskToolIcon(input ?? null)
   if (name === "skill") return <SparklesIcon className={ICON_CLASS} />
-  if (name === "enterplanmode" || name === "exitplanmode")
-    return <BrainIcon className={ICON_CLASS} />
-  if (name === "switch_mode") return <MapIcon className={ICON_CLASS} />
+  if (
+    name === "enterplanmode" ||
+    name === "exitplanmode" ||
+    name === "switch_mode"
+  )
+    return <ListTodoIcon className={ICON_CLASS} />
   return undefined
 }
 
@@ -1056,8 +1058,16 @@ function deriveToolTitle(
     name === "exitplanmode" ||
     name === "switch_mode"
   ) {
+    const plan = getField("plan")
+    if (plan) {
+      const firstLine = plan
+        .split("\n")
+        .map((l) => l.replace(/^#+\s*/, "").trim())
+        .find((l) => l.length > 0)
+      if (firstLine) return `Plan · ${ellipsis(firstLine, 60)}`
+    }
     const title = getField("title")
-    if (title) return title
+    if (title) return `Plan · ${title}`
     return "Plan"
   }
 
