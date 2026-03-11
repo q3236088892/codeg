@@ -352,14 +352,11 @@ const ConversationTabView = memo(function ConversationTabView({
     acknowledgePersistedDetail(dbConversationId, detail)
   }, [acknowledgePersistedDetail, connStatus, dbConversationId, detail])
 
-  const [prevConnStatus, setPrevConnStatus] = useState(connStatus)
-  const promptingJustEnded =
-    prevConnStatus === "prompting" && connStatus !== "prompting"
-  if (prevConnStatus !== connStatus) {
-    setPrevConnStatus(connStatus)
-  }
+  const prevConnStatusRef = useRef(connStatus)
   useEffect(() => {
-    if (!promptingJustEnded) return
+    const wasPrompting = prevConnStatusRef.current === "prompting"
+    prevConnStatusRef.current = connStatus
+    if (!wasPrompting || connStatus === "prompting") return
 
     setSyncState(effectiveConversationId, "reconciling")
     const persistedId = dbConvIdRef.current
@@ -381,7 +378,6 @@ const ConversationTabView = memo(function ConversationTabView({
   }, [
     clearReconcileTimer,
     connStatus,
-    promptingJustEnded,
     effectiveConversationId,
     refreshConversations,
     refreshFromDb,
