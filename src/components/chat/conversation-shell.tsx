@@ -11,6 +11,7 @@ import type {
   PendingPermission,
   PendingQuestion,
 } from "@/contexts/acp-connections-context"
+import type { QueuedMessage } from "@/hooks/use-message-queue"
 import { ChatInput } from "@/components/chat/chat-input"
 import { PermissionDialog } from "@/components/chat/permission-dialog"
 import { QuestionDialog } from "@/components/chat/question-dialog"
@@ -40,6 +41,16 @@ interface ConversationShellProps {
   draftStorageKey?: string | null
   hideInput?: boolean
   isActive?: boolean
+  queue?: QueuedMessage[]
+  onEnqueue?: (draft: PromptDraft, modeId: string | null) => void
+  onQueueReorder?: (items: QueuedMessage[]) => void
+  onQueueEdit?: (id: string) => void
+  onQueueDelete?: (id: string) => void
+  editingItemId?: string | null
+  editingDraftText?: string | null
+  isEditingQueueItem?: boolean
+  onSaveQueueEdit?: (draft: PromptDraft) => void
+  onCancelQueueEdit?: () => void
 }
 
 export function ConversationShell({
@@ -67,6 +78,16 @@ export function ConversationShell({
   draftStorageKey,
   hideInput = false,
   isActive,
+  queue,
+  onEnqueue,
+  onQueueReorder,
+  onQueueEdit,
+  onQueueDelete,
+  editingItemId,
+  editingDraftText,
+  isEditingQueueItem,
+  onSaveQueueEdit,
+  onCancelQueueEdit,
 }: ConversationShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -98,6 +119,16 @@ export function ConversationShell({
           attachmentTabId={attachmentTabId}
           draftStorageKey={draftStorageKey}
           isActive={isActive}
+          queue={queue}
+          onEnqueue={onEnqueue}
+          onQueueReorder={onQueueReorder}
+          onQueueEdit={onQueueEdit}
+          onQueueDelete={onQueueDelete}
+          editingItemId={editingItemId}
+          editingDraftText={editingDraftText}
+          isEditingQueueItem={isEditingQueueItem}
+          onSaveQueueEdit={onSaveQueueEdit}
+          onCancelQueueEdit={onCancelQueueEdit}
         />
       )}
 

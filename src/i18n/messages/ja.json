@@ -1145,6 +1145,13 @@
         "cancel": "キャンセル",
         "send": "送信"
       },
+      "messageQueue": {
+        "addToQueue": "キューに追加",
+        "saveEdit": "保存",
+        "cancelEdit": "編集をキャンセル",
+        "editItem": "編集",
+        "deleteItem": "削除"
+      },
       "welcomeInputPanel": {
         "agentsSettingsPath": "設定 > エージェント",
         "autoConnectFallback": "{path} を開いてインストールを管理してください。",

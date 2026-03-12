@@ -1145,6 +1145,13 @@
         "cancel": "取消",
         "send": "傳送"
       },
+      "messageQueue": {
+        "addToQueue": "加入佇列",
+        "saveEdit": "儲存",
+        "cancelEdit": "取消編輯",
+        "editItem": "編輯",
+        "deleteItem": "刪除"
+      },
       "welcomeInputPanel": {
         "agentsSettingsPath": "設定 > Agents",
         "autoConnectFallback": "點擊前往 {path} 管理安裝。",

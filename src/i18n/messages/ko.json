@@ -1145,6 +1145,13 @@
         "cancel": "취소",
         "send": "보내기"
       },
+      "messageQueue": {
+        "addToQueue": "대기열에 추가",
+        "saveEdit": "저장",
+        "cancelEdit": "편집 취소",
+        "editItem": "편집",
+        "deleteItem": "삭제"
+      },
       "welcomeInputPanel": {
         "agentsSettingsPath": "설정 > 에이전트",
         "autoConnectFallback": "{path}을(를) 열어 설치를 관리하세요.",

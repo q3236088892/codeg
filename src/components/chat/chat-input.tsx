@@ -9,7 +9,9 @@ import type {
   SessionModeInfo,
   AvailableCommandInfo,
 } from "@/lib/types"
+import type { QueuedMessage } from "@/hooks/use-message-queue"
 import { MessageInput } from "@/components/chat/message-input"
+import { MessageQueueDisplay } from "@/components/chat/message-queue-display"
 
 interface ChatInputProps {
   status: ConnectionStatus | null
@@ -29,6 +31,16 @@ interface ChatInputProps {
   attachmentTabId?: string | null
   draftStorageKey?: string | null
   isActive?: boolean
+  queue?: QueuedMessage[]
+  onEnqueue?: (draft: PromptDraft, modeId: string | null) => void
+  onQueueReorder?: (items: QueuedMessage[]) => void
+  onQueueEdit?: (id: string) => void
+  onQueueDelete?: (id: string) => void
+  editingItemId?: string | null
+  editingDraftText?: string | null
+  isEditingQueueItem?: boolean
+  onSaveQueueEdit?: (draft: PromptDraft) => void
+  onCancelQueueEdit?: () => void
 }
 
 export function ChatInput({
@@ -49,6 +61,16 @@ export function ChatInput({
   attachmentTabId,
   draftStorageKey,
   isActive,
+  queue,
+  onEnqueue,
+  onQueueReorder,
+  onQueueEdit,
+  onQueueDelete,
+  editingItemId,
+  editingDraftText,
+  isEditingQueueItem,
+  onSaveQueueEdit,
+  onCancelQueueEdit,
 }: ChatInputProps) {
   const t = useTranslations("Folder.chat.chatInput")
   const isConnected = status === "connected"
@@ -57,12 +79,25 @@ export function ChatInput({
 
   return (
     <div className="p-4 pt-0">
+      {queue &&
+        queue.length > 0 &&
+        onQueueReorder &&
+        onQueueEdit &&
+        onQueueDelete && (
+          <MessageQueueDisplay
+            queue={queue}
+            onReorder={onQueueReorder}
+            onEdit={onQueueEdit}
+            onDelete={onQueueDelete}
+            editingItemId={editingItemId ?? null}
+          />
+        )}
       <MessageInput
         onSend={onSend}
         promptCapabilities={promptCapabilities}
         onFocus={onFocus}
         defaultPath={defaultPath}
-        disabled={!isConnected}
+        disabled={!isConnected && !isPrompting}
         isPrompting={isPrompting}
         onCancel={onCancel}
         modes={modes}
@@ -76,6 +111,11 @@ export function ChatInput({
         attachmentTabId={attachmentTabId}
         draftStorageKey={draftStorageKey}
         isActive={isActive}
+        onEnqueue={onEnqueue}
+        editingDraftText={editingDraftText}
+        isEditingQueueItem={isEditingQueueItem}
+        onSaveQueueEdit={onSaveQueueEdit}
+        onCancelQueueEdit={onCancelQueueEdit}
         placeholder={
           isConnecting
             ? t("connecting")

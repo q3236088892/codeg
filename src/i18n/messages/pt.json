@@ -1145,6 +1145,13 @@
         "cancel": "Cancelar",
         "send": "Enviar"
       },
+      "messageQueue": {
+        "addToQueue": "Adicionar à fila",
+        "saveEdit": "Salvar",
+        "cancelEdit": "Cancelar edição",
+        "editItem": "Editar",
+        "deleteItem": "Remover"
+      },
       "welcomeInputPanel": {
         "agentsSettingsPath": "Configurações > Agentes",
         "autoConnectFallback": "Clique para abrir {path} e gerenciar a instalação.",

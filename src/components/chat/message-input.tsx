@@ -13,7 +13,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import { Ellipsis, FileSearch, Plus, Send, Square, X } from "lucide-react"
+import {
+  Check,
+  Ellipsis,
+  FileSearch,
+  ListPlus,
+  Plus,
+  Send,
+  Square,
+  X,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { matchShortcutEvent } from "@/lib/keyboard-shortcuts"
 import { useShortcutSettings } from "@/hooks/use-shortcut-settings"
@@ -62,6 +71,11 @@ interface MessageInputProps {
   attachmentTabId?: string | null
   draftStorageKey?: string | null
   isActive?: boolean
+  onEnqueue?: (draft: PromptDraft, modeId: string | null) => void
+  editingDraftText?: string | null
+  isEditingQueueItem?: boolean
+  onSaveQueueEdit?: (draft: PromptDraft) => void
+  onCancelQueueEdit?: () => void
 }
 
 interface ResourceInputAttachment {
@@ -261,8 +275,14 @@ export function MessageInput({
   attachmentTabId,
   draftStorageKey,
   isActive = false,
+  onEnqueue,
+  editingDraftText,
+  isEditingQueueItem = false,
+  onSaveQueueEdit,
+  onCancelQueueEdit,
 }: MessageInputProps) {
   const t = useTranslations("Folder.chat.messageInput")
+  const tQueue = useTranslations("Folder.chat.messageQueue")
   const { shortcuts } = useShortcutSettings()
   const effectiveDraftStorageKey = draftStorageKey ?? attachmentTabId ?? null
   const resolvedPlaceholder = placeholder ?? t("askAnything")
@@ -302,6 +322,24 @@ export function MessageInput({
     isPromptingRef.current = isPrompting
   }, [isPrompting])
 
+  // Load external draft text when editing a queue item
+  const prevEditingDraftRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (
+      isEditingQueueItem &&
+      editingDraftText != null &&
+      editingDraftText !== prevEditingDraftRef.current
+    ) {
+      prevEditingDraftRef.current = editingDraftText
+      setText(editingDraftText)
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus()
+      })
+    } else if (!isEditingQueueItem) {
+      prevEditingDraftRef.current = null
+    }
+  }, [isEditingQueueItem, editingDraftText])
+
   const setDragActiveIfChanged = useCallback((next: boolean) => {
     if (dragActiveRef.current === next) return
     dragActiveRef.current = next
@@ -309,9 +347,9 @@ export function MessageInput({
   }, [])
 
   useEffect(() => {
-    if (!effectiveDraftStorageKey) return
+    if (!effectiveDraftStorageKey || isEditingQueueItem) return
     saveMessageInputDraft(effectiveDraftStorageKey, text)
-  }, [effectiveDraftStorageKey, text])
+  }, [effectiveDraftStorageKey, text, isEditingQueueItem])
 
   const availableModes = useMemo(() => modes ?? [], [modes])
   const availableConfigOptions = useMemo(
@@ -653,7 +691,7 @@ export function MessageInput({
 
   const handlePaste = useCallback(
     (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      if (disabled || isPrompting) return
+      if (disabled) return
       const files = Array.from(event.clipboardData?.files ?? [])
       if (files.length === 0) return
       event.preventDefault()
@@ -661,7 +699,7 @@ export function MessageInput({
         console.error("[MessageInput] paste files failed:", error)
       })
     },
-    [appendFilesFromInput, disabled, isPrompting]
+    [appendFilesFromInput, disabled]
   )
 
   useEffect(() => {
@@ -763,15 +801,13 @@ export function MessageInput({
       if (payload.type === "drop") {
         setDragActiveIfChanged(false)
         if (Date.now() - lastDomDropAtRef.current < 250) return
-        if (!inside || disabledRef.current || isPromptingRef.current) return
+        if (!inside || disabledRef.current) return
         void appendPathsFromDropRef.current(payload.paths).catch((error) => {
           console.error("[MessageInput] drag drop paths failed:", error)
         })
         return
       }
-      setDragActiveIfChanged(
-        inside && !disabledRef.current && !isPromptingRef.current
-      )
+      setDragActiveIfChanged(inside && !disabledRef.current)
     }
 
     const setup = async () => {
@@ -843,9 +879,9 @@ export function MessageInput({
     setAttachments((prev) => prev.filter((item) => item.id !== id))
   }, [])
 
-  const handleSend = useCallback(() => {
+  const buildDraft = useCallback((): PromptDraft | null => {
     const trimmed = textRef.current.trim()
-    if (!trimmed && attachments.length === 0) return
+    if (!trimmed && attachments.length === 0) return null
 
     const blocks: PromptInputBlock[] = []
     if (trimmed) {
@@ -883,14 +919,41 @@ export function MessageInput({
     const displayText =
       trimmed ||
       `Attached ${attachments.length} attachment${attachments.length > 1 ? "s" : ""}`
-    onSend({ blocks, displayText }, showModeSelector ? effectiveModeId : null)
+    return { blocks, displayText }
+  }, [attachments])
+
+  const handleSend = useCallback(() => {
+    const draft = buildDraft()
+    if (!draft) return
+
+    // Edit mode: save back to queue item
+    if (isEditingQueueItem && onSaveQueueEdit) {
+      onSaveQueueEdit(draft)
+      setText("")
+      setAttachments([])
+      return
+    }
+
+    // Prompting mode: enqueue instead of sending
+    if (isPrompting && onEnqueue) {
+      onEnqueue(draft, showModeSelector ? effectiveModeId : null)
+      setText("")
+      setAttachments([])
+      return
+    }
+
+    onSend(draft, showModeSelector ? effectiveModeId : null)
     if (effectiveDraftStorageKey) {
       clearMessageInputDraft(effectiveDraftStorageKey)
     }
     setText("")
     setAttachments([])
   }, [
-    attachments,
+    buildDraft,
+    isEditingQueueItem,
+    isPrompting,
+    onSaveQueueEdit,
+    onEnqueue,
     onSend,
     effectiveModeId,
     showModeSelector,
@@ -935,9 +998,15 @@ export function MessageInput({
         }
       }
 
+      if (isEditingQueueItem && e.key === "Escape") {
+        e.preventDefault()
+        onCancelQueueEdit?.()
+        return
+      }
+
       if (matchShortcutEvent(e, shortcuts.send_message)) {
         e.preventDefault()
-        if (!disabled) handleSend()
+        if (!disabled || isPrompting || isEditingQueueItem) handleSend()
       } else if (matchShortcutEvent(e, shortcuts.newline_in_message)) {
         e.preventDefault()
         const textarea = e.currentTarget as HTMLTextAreaElement
@@ -953,6 +1022,9 @@ export function MessageInput({
     },
     [
       disabled,
+      isPrompting,
+      isEditingQueueItem,
+      onCancelQueueEdit,
       handleSend,
       shortcuts,
       slashMenuOpen,
@@ -966,11 +1038,11 @@ export function MessageInput({
     (event: React.DragEvent<HTMLDivElement>) => {
       if (!hasDragFiles(event.dataTransfer)) return
       event.preventDefault()
-      if (!disabled && !isPrompting) {
+      if (!disabled) {
         setDragActiveIfChanged(true)
       }
     },
-    [disabled, isPrompting, setDragActiveIfChanged]
+    [disabled, setDragActiveIfChanged]
   )
 
   const handleContainerDragLeave = useCallback(
@@ -994,7 +1066,7 @@ export function MessageInput({
       event.preventDefault()
       lastDomDropAtRef.current = Date.now()
       setDragActiveIfChanged(false)
-      if (disabled || isPrompting) return
+      if (disabled) return
       const files = Array.from(event.dataTransfer.files ?? [])
       if (files.length > 0) {
         void appendFilesFromInput(files).catch((error) => {
@@ -1002,7 +1074,7 @@ export function MessageInput({
         })
       }
     },
-    [appendFilesFromInput, disabled, isPrompting, setDragActiveIfChanged]
+    [appendFilesFromInput, disabled, setDragActiveIfChanged]
   )
 
   const hasImageAttachments = imageAttachments.length > 0
@@ -1016,7 +1088,7 @@ export function MessageInput({
           ? "pt-10"
           : "pt-3"
   const bottomPaddingClass = "pb-10"
-  const showDragActive = isDragActive && !disabled && !isPrompting
+  const showDragActive = isDragActive && !disabled
 
   const selectorItems = (
     <>
@@ -1143,7 +1215,7 @@ export function MessageInput({
         <div className="flex items-center gap-1">
           <Button
             onClick={handlePickFiles}
-            disabled={disabled || isPrompting}
+            disabled={disabled}
             variant="ghost"
             size="icon"
             className="h-6 w-6 shrink-0"
@@ -1175,16 +1247,47 @@ export function MessageInput({
           )}
         </div>
       </div>
-      {isPrompting && onCancel ? (
-        <Button
-          onClick={onCancel}
-          variant="destructive"
-          size="icon"
-          className="absolute right-2 bottom-2"
-          title={t("cancel")}
-        >
-          <Square className="h-4 w-4" />
-        </Button>
+      {isEditingQueueItem ? (
+        <div className="absolute right-2 bottom-2 flex items-center gap-1">
+          <Button
+            onClick={onCancelQueueEdit}
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title={tQueue("cancelEdit")}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={handleSend}
+            disabled={!hasSendableContent}
+            size="icon"
+            title={tQueue("saveEdit")}
+          >
+            <Check className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : isPrompting && onCancel ? (
+        <div className="absolute right-2 bottom-2 flex items-center gap-1">
+          <Button
+            onClick={handleSend}
+            disabled={!hasSendableContent}
+            variant="secondary"
+            size="icon"
+            className="h-8 w-8"
+            title={tQueue("addToQueue")}
+          >
+            <ListPlus className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={onCancel}
+            variant="destructive"
+            size="icon"
+            title={t("cancel")}
+          >
+            <Square className="h-4 w-4" />
+          </Button>
+        </div>
       ) : (
         <Button
           onClick={handleSend}

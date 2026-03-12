@@ -1145,6 +1145,13 @@
         "cancel": "إلغاء",
         "send": "إرسال"
       },
+      "messageQueue": {
+        "addToQueue": "إضافة للقائمة",
+        "saveEdit": "حفظ",
+        "cancelEdit": "إلغاء التعديل",
+        "editItem": "تعديل",
+        "deleteItem": "حذف"
+      },
       "welcomeInputPanel": {
         "agentsSettingsPath": "الإعدادات > الوكلاء",
         "autoConnectFallback": "انقر لفتح {path} وإدارة التثبيت.",

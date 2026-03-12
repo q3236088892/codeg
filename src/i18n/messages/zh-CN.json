@@ -1145,6 +1145,13 @@
         "cancel": "取消",
         "send": "发送"
       },
+      "messageQueue": {
+        "addToQueue": "加入队列",
+        "saveEdit": "保存",
+        "cancelEdit": "取消编辑",
+        "editItem": "编辑",
+        "deleteItem": "删除"
+      },
       "welcomeInputPanel": {
         "agentsSettingsPath": "设置 > Agents",
         "autoConnectFallback": "点击前往 {path} 管理安装。",

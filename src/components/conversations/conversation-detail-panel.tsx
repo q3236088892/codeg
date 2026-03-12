@@ -18,6 +18,7 @@ import { useTabContext } from "@/contexts/tab-context"
 import { useSessionStats } from "@/contexts/session-stats-context"
 import { cn } from "@/lib/utils"
 import { useConnectionLifecycle } from "@/hooks/use-connection-lifecycle"
+import { useMessageQueue, type QueuedMessage } from "@/hooks/use-message-queue"
 import { MessageListView } from "@/components/message/message-list-view"
 import { ConversationShell } from "@/components/chat/conversation-shell"
 import { AgentSelector } from "@/components/chat/agent-selector"
@@ -254,6 +255,18 @@ const ConversationTabView = memo(function ConversationTabView({
     disconnect: connDisconnect,
     sessionId: connSessionId,
   } = conn
+  const messageQueue = useMessageQueue()
+  const {
+    queue: msgQueue,
+    enqueue: mqEnqueue,
+    dequeue: mqDequeue,
+    remove: mqRemove,
+    reorder: mqReorder,
+    updateItem: mqUpdateItem,
+    editingItemId: mqEditingItemId,
+    startEditing: mqStartEditing,
+    cancelEditing: mqCancelEditing,
+  } = messageQueue
   const connStatusRef = useRef(connStatus)
   useEffect(() => {
     connStatusRef.current = connStatus
@@ -328,6 +341,32 @@ const ConversationTabView = memo(function ConversationTabView({
     refreshConversations,
     syncTurnMetadata,
   ])
+
+  // Auto-send queued messages when agent finishes responding.
+  // Refs are synced via useEffect; the auto-send effect is declared
+  // AFTER completeTurn so React runs it second.
+  const autoSendQueueRef = useRef<() => QueuedMessage | undefined>(mqDequeue)
+  useEffect(() => {
+    autoSendQueueRef.current = mqDequeue
+  }, [mqDequeue])
+  const handleSendRef = useRef<
+    (draft: PromptDraft, modeId?: string | null) => void
+  >(() => {})
+
+  const prevAutoSendStatusRef = useRef(connStatus)
+  useEffect(() => {
+    const wasPrompting = prevAutoSendStatusRef.current === "prompting"
+    prevAutoSendStatusRef.current = connStatus
+    if (!wasPrompting || connStatus !== "connected") return
+
+    // Use queueMicrotask to ensure completeTurn effect has fully committed
+    queueMicrotask(() => {
+      const next = autoSendQueueRef.current()
+      if (next) {
+        handleSendRef.current(next.draft, next.modeId)
+      }
+    })
+  }, [connStatus])
 
   useEffect(() => {
     // Only sync non-null liveMessage updates to state. When conn.liveMessage
@@ -545,6 +584,11 @@ const ConversationTabView = memo(function ConversationTabView({
     ]
   )
 
+  // Sync handleSend ref for auto-send effect (declared before handleSend)
+  useEffect(() => {
+    handleSendRef.current = handleSend
+  }, [handleSend])
+
   const handleOpenAgentsSettings = useCallback(() => {
     openSettingsWindow("agents", { agentType: selectedAgent }).catch((err) => {
       console.error(
@@ -615,6 +659,33 @@ const ConversationTabView = memo(function ConversationTabView({
     ]
   )
 
+  // Queue edit flow: derive editing draft text from queue state
+  const editingQueueDraftText = useMemo(() => {
+    if (!mqEditingItemId) return null
+    const item = msgQueue.find((m) => m.id === mqEditingItemId)
+    return item?.draft.displayText ?? null
+  }, [mqEditingItemId, msgQueue])
+
+  const handleQueueEdit = useCallback(
+    (id: string) => {
+      mqStartEditing(id)
+    },
+    [mqStartEditing]
+  )
+
+  const handleQueueCancelEdit = useCallback(() => {
+    mqCancelEditing()
+  }, [mqCancelEditing])
+
+  const handleSaveQueueEdit = useCallback(
+    (draft: PromptDraft) => {
+      if (mqEditingItemId) {
+        mqUpdateItem(mqEditingItemId, draft)
+      }
+    },
+    [mqEditingItemId, mqUpdateItem]
+  )
+
   const showDraftHeader = !hasPersistedConversation && !hasSentMessage
   const isWelcomeMode = showDraftHeader
 
@@ -657,6 +728,16 @@ const ConversationTabView = memo(function ConversationTabView({
       draftStorageKey={draftStorageKey}
       hideInput={isWelcomeMode}
       isActive={isActive}
+      queue={msgQueue}
+      onEnqueue={mqEnqueue}
+      onQueueReorder={mqReorder}
+      onQueueEdit={handleQueueEdit}
+      onQueueDelete={mqRemove}
+      editingItemId={mqEditingItemId}
+      editingDraftText={editingQueueDraftText}
+      isEditingQueueItem={mqEditingItemId != null}
+      onSaveQueueEdit={handleSaveQueueEdit}
+      onCancelQueueEdit={handleQueueCancelEdit}
     >
       {isWelcomeMode ? (
         <div className="flex h-full min-h-0 flex-col items-center justify-center">
